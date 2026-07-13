@@ -1,0 +1,58 @@
+[project]
+name = "prodeo"
+version = "0.1.0"
+description = "Prodeo Command Center - an operating system for AI agents (headless core)"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "structlog>=24.1",
+    "python-ulid>=2.6",
+    "aiosqlite>=0.20",
+]
+
+[project.scripts]
+prodeo-server = "prodeo.server:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "mypy>=1.10",
+    "ruff>=0.5",
+]
+
+# [tool.uv.workspace]
+# members = ["packages/*"]   # enabled in Phase 2 when the first plugin package lands
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/prodeo"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "TCH", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+mypy_path = "src"
+packages = ["prodeo"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+testpaths = ["src", "tests"]
+markers = ["integration: cross-component tests"]
+
+[tool.coverage.run]
+source = ["src/prodeo"]
