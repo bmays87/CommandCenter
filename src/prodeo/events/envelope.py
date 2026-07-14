@@ -1,14 +1,30 @@
 """The common event envelope shared by every event in the system."""
 
+import threading
 from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 from ulid import ULID
 
+_id_lock = threading.Lock()
+_last_id = 0
+
 
 def _new_id() -> str:
-    return str(ULID())
+    """A monotonic ULID.
+
+    Cursor semantics (WebSocket dedup, ``after`` pagination) require ids from
+    this process to be strictly increasing even within one millisecond, so ties
+    are broken by incrementing the previous id's random component.
+    """
+    global _last_id
+    with _id_lock:
+        candidate = int(ULID())
+        if candidate <= _last_id:
+            candidate = _last_id + 1
+        _last_id = candidate
+        return str(ULID.from_int(candidate))
 
 
 def _now() -> datetime:

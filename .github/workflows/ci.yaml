@@ -18,5 +18,29 @@ jobs:
         run: uv run ruff format --check .
       - name: Types
         run: uv run mypy
-      - name: Tests
+      - name: Tests (core, adapter conformance, integration)
         run: uv run pytest -q
+
+  dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: uv sync --all-groups
+      - name: API schema drift check
+        run: |
+          uv run python scripts/export_openapi.py dashboard/openapi.json
+          git diff --exit-code dashboard/openapi.json
+      - run: npm ci
+        working-directory: dashboard
+      - name: Generated types drift check
+        run: |
+          npm run generate
+          git diff --exit-code src/api/schema.d.ts
+        working-directory: dashboard
+      - name: Typecheck + build
+        run: npm run build
+        working-directory: dashboard

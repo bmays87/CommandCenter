@@ -1,8 +1,8 @@
 """Composition root - the only module where concrete implementations are wired.
 
-Phase 0 boots the bus, the SQLite event store, and the recorder; emits
-``system.started``; then idles until interrupted. The API layer, Session
-Registry, and Adapter Manager attach here in Phase 1.
+Phase 1 boots: bus -> store -> recorder -> registry (rebuilt from the log) ->
+adapter manager (plugins via entry points) -> API server; emits
+``system.started``; then idles until interrupted.
 """
 
 import asyncio
@@ -12,12 +12,15 @@ import signal
 import structlog
 
 from prodeo import __version__
+from prodeo.adapters import AdapterManager
+from prodeo.api import ApiServer, create_app
 from prodeo.bus import InProcessEventBus
 from prodeo.config import Settings
 from prodeo.events import new_event
 from prodeo.events import types as ev
 from prodeo.logging import configure_logging
 from prodeo.persistence import EventRecorder, SqliteEventStore
+from prodeo.sessions import SessionRegistry
 
 _log = structlog.get_logger(__name__)
 
@@ -30,10 +33,33 @@ class Server:
         self.bus = InProcessEventBus()
         self.store = SqliteEventStore(settings.event_db_path)
         self.recorder = EventRecorder(self.bus, self.store)
+        self.registry = SessionRegistry(self.bus, node=settings.node_name)
+        self.adapters = AdapterManager(
+            self.bus,
+            self.registry,
+            data_dir=settings.data_dir,
+            node=settings.node_name,
+            adapter_config=settings.adapters,
+            discovery_interval=settings.discovery_interval_s,
+        )
+        self.api = ApiServer(
+            create_app(
+                registry=self.registry,
+                store=self.store,
+                bus=self.bus,
+                node=settings.node_name,
+                version=__version__,
+                api_token=settings.api_token,
+                dashboard_dir=settings.dashboard_dir,
+            ),
+            host=settings.api_host,
+            port=settings.api_port,
+        )
 
     async def start(self) -> None:
         await self.store.open()
         await self.recorder.start()
+        await self.registry.rebuild(self.store)
         await self.bus.publish(
             new_event(
                 ev.SYSTEM_STARTED,
@@ -41,9 +67,19 @@ class Server:
                 payload={"version": __version__},
             )
         )
-        _log.info("server.started", node=self.settings.node_name, version=__version__)
+        await self.adapters.load_entry_points()
+        await self.adapters.start()
+        await self.api.start()
+        _log.info(
+            "server.started",
+            node=self.settings.node_name,
+            version=__version__,
+            api=f"http://{self.settings.api_host}:{self.api.port}",
+        )
 
     async def stop(self) -> None:
+        await self.api.stop()
+        await self.adapters.stop()
         await self.bus.publish(new_event(ev.SYSTEM_STOPPING, node=self.settings.node_name))
         await self.recorder.stop()
         await self.bus.close()

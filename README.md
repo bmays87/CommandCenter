@@ -9,9 +9,24 @@ Aider, or OpenHands — it manages them.
 
 ## Status
 
-**Pre-implementation.** The project is currently in its documentation-first design
-phase. No production code exists yet. Start with [docs/vision.md](docs/vision.md)
-and [docs/architecture/overview.md](docs/architecture/overview.md).
+**Phase 1 — Observe.** The core boots, the claude-code adapter watches Claude Code
+session transcripts, and the dashboard shows your fleet live. See the
+[roadmap](docs/roadmap.md) for what each phase delivers. Start with
+[docs/vision.md](docs/vision.md) and
+[docs/architecture/overview.md](docs/architecture/overview.md).
+
+## Quickstart
+
+```bash
+uv sync --all-groups
+(cd dashboard && npm install && npm run build)   # optional: the web UI
+PRODEO_API_TOKEN=change-me uv run prodeo-server
+```
+
+Open `http://127.0.0.1:8600`, enter your token, and any Claude Code session on the
+machine (live or historical) appears in the fleet view. The REST API lives under
+`/api` (`/api/health`, `/api/sessions`, `/api/events`) with a WebSocket event
+stream at `/api/ws/events`; interactive docs at `/docs`.
 
 ## Documentation Map
 

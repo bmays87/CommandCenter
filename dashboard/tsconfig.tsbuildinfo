@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/format.ts","./src/live.ts","./src/main.tsx","./src/api/client.ts","./src/api/schema.d.ts","./src/api/types.ts","./src/views/fleetview.tsx","./src/views/sessionview.tsx"],"version":"5.9.3"}

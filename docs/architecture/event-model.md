@@ -66,6 +66,17 @@ Adapters report raw observations; the Session Registry owns the canonical state
 machine and rejects illegal transitions (emitting `adapter.error` when an adapter
 misbehaves rather than corrupting state).
 
+Two implementation notes (Phase 1):
+
+- `session.state_changed` is emitted for **every** transition and is what state is
+  rebuilt from. The specific lifecycle events (`session.started`, `.completed`,
+  `.failed`, `.stopped`, `.archived`) are emitted *additionally* for semantic
+  consumers such as notifications; they carry no state a fold needs.
+- Terminal states other than `archived` may transition back to `running`
+  ("resumed"). Observe-only adapters can see a session they classified as
+  finished start appending output again; treating that as a resume is more
+  truthful than rejecting the observation.
+
 ## Bus Semantics (v1, in-process)
 
 - Async pub/sub with per-subscriber queues; a slow subscriber never blocks the bus.
