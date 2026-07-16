@@ -1,4 +1,4 @@
-"""Claude Code adapter: observe + historical via transcript watching.
+"""Claude Code adapter: observe via transcript watching, control via the SDK.
 
 Sessions are the ``*.jsonl`` transcripts under Claude Code's projects
 directory. Discovery scans the directory; ``watch`` tails one transcript,
@@ -6,6 +6,12 @@ feeding complete lines through the versioned parser and reporting the
 resulting observations. Per-session byte offsets persist in the adapter's
 data directory so a server restart does not replay history into the event
 log twice.
+
+Control (launch/terminate/respond/send_prompt) uses the Claude Agent SDK via
+:mod:`.launcher`. SDK-launched sessions write the same transcripts, so they
+are *observed* exactly like manual ones (ADR-0008); control only applies to
+sessions this server launched. Permission requests from launched sessions
+surface as ``InteractionObservation``s and are answered through ``respond()``.
 
 All file IO happens in threads (async discipline: nothing blocks the loop).
 """
@@ -17,20 +23,31 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from prodeo.adapters.context import AdapterContext
 from prodeo.adapters.interface import (
     AdapterCapabilities,
     AdapterMetadata,
+    InteractionRef,
+    LaunchSpec,
     ObserveOnlyAdapter,
     SessionRef,
 )
-from prodeo.adapters.observations import SessionObservation, StateObservation
+from prodeo.adapters.observations import (
+    InteractionObservation,
+    SessionObservation,
+    StateObservation,
+)
+from prodeo.errors import CapabilityNotSupportedError
+from prodeo.mediation.model import Answer, InteractionKind
 from prodeo.sessions.model import SessionDescriptor
 from prodeo.sessions.state import SessionState
+from prodeo_adapter_claude_code.launcher import ClientFactory, SdkLauncher, sdk_available
 from prodeo_adapter_claude_code.parser import TranscriptParser
 
 _PEEK_BYTES = 64 * 1024  # how much of a transcript discovery reads for metadata
+_INTERACTION_BODY_CHARS = 4000  # tool input shown to the human, capped
 
 
 @dataclass
@@ -42,11 +59,24 @@ class _TranscriptFile:
 
 
 class ClaudeCodeAdapter(ObserveOnlyAdapter):
-    """Observe-only adapter for Claude Code transcript files."""
+    """Claude Code adapter: transcript observation + SDK control."""
 
-    def __init__(self) -> None:
-        self.metadata = AdapterMetadata(name="claude-code", version="0.1.0")
-        self.capabilities = AdapterCapabilities(observe=True, historical_sessions=True)
+    def __init__(self, client_factory: ClientFactory | None = None) -> None:
+        self.metadata = AdapterMetadata(name="claude-code", version="0.2.0")
+        control = client_factory is not None or sdk_available()
+        self.capabilities = AdapterCapabilities(
+            observe=True,
+            historical_sessions=True,
+            launch=control,
+            terminate=control,
+            respond_to_permissions=control,
+            send_prompts=control,
+        )
+        self._client_factory = client_factory
+        self._launcher: SdkLauncher | None = None
+        self._owned: set[str] = set()
+        self._permission_timeout_s: float | None = None
+        self._transcript_wait_s = 30.0
         self._ctx: AdapterContext | None = None
         self._projects_dir = Path.home() / ".claude" / "projects"
         self._idle_timeout = 1800.0
@@ -67,12 +97,89 @@ class ClaudeCodeAdapter(ObserveOnlyAdapter):
         self._idle_timeout = float(cfg.get("idle_timeout_s", self._idle_timeout))
         self._poll_interval = float(cfg.get("poll_interval_s", self._poll_interval))
         self._max_replay_bytes = int(cfg.get("max_replay_bytes", self._max_replay_bytes))
+        raw_timeout = cfg.get("permission_timeout_s")
+        self._permission_timeout_s = float(raw_timeout) if raw_timeout is not None else None
+        if not bool(cfg.get("control_enabled", True)):
+            self.capabilities = AdapterCapabilities(observe=True, historical_sessions=True)
+        if self.capabilities.launch:
+            self._launcher = SdkLauncher(
+                on_interaction=self._on_sdk_interaction,
+                on_failed=self._on_sdk_failed,
+                client_factory=self._client_factory,
+            )
         self._stopped = False
         self._offsets = await asyncio.to_thread(self._load_offsets)
-        ctx.logger.info("claude_code.started", projects_dir=str(self._projects_dir))
+        ctx.logger.info(
+            "claude_code.started",
+            projects_dir=str(self._projects_dir),
+            control=self.capabilities.launch,
+        )
 
     async def stop(self) -> None:
         self._stopped = True
+        if self._launcher is not None:
+            await self._launcher.close()
+
+    # ------------------------------------------------------------- control
+
+    async def launch(self, spec: LaunchSpec) -> SessionRef:
+        launcher = self._require_launcher("launch")
+        native_id = await launcher.launch(spec)
+        self._owned.add(native_id)
+        return SessionRef(adapter=self.metadata.name, native_id=native_id, session_id="")
+
+    async def terminate(self, session: SessionRef) -> None:
+        launcher = self._require_launcher("terminate")
+        self._require_owned(session.native_id)
+        await launcher.terminate(session.native_id)
+        if self._ctx is not None:
+            await self._ctx.report(
+                StateObservation(
+                    native_id=session.native_id, state=SessionState.STOPPED, reason="terminated"
+                )
+            )
+
+    async def respond(self, interaction: InteractionRef, answer: Answer) -> None:
+        launcher = self._require_launcher("respond")
+        await launcher.respond(interaction.session_native_id, interaction.native_id, answer)
+
+    async def send_prompt(self, session: SessionRef, prompt: str) -> None:
+        launcher = self._require_launcher("send_prompt")
+        self._require_owned(session.native_id)
+        await launcher.send_prompt(session.native_id, prompt)
+
+    def _require_launcher(self, capability: str) -> SdkLauncher:
+        if self._launcher is None:
+            raise CapabilityNotSupportedError(capability)
+        return self._launcher
+
+    def _require_owned(self, native_id: str) -> None:
+        if native_id not in self._owned:
+            raise RuntimeError(
+                f"session {native_id} was not launched by this server (observe-only)"
+            )
+
+    async def _on_sdk_interaction(
+        self, native_id: str, interaction_native_id: str, tool_name: str, input_data: dict[str, Any]
+    ) -> None:
+        assert self._ctx is not None
+        body = json.dumps(input_data, indent=2, default=str)[:_INTERACTION_BODY_CHARS]
+        await self._ctx.report(
+            InteractionObservation(
+                native_id=native_id,
+                interaction_native_id=interaction_native_id,
+                kind=InteractionKind.PERMISSION,
+                title=f"Allow {tool_name}?",
+                body=body,
+                timeout_s=self._permission_timeout_s,
+            )
+        )
+
+    async def _on_sdk_failed(self, native_id: str, reason: str) -> None:
+        assert self._ctx is not None
+        await self._ctx.report(
+            StateObservation(native_id=native_id, state=SessionState.FAILED, reason=reason)
+        )
 
     # ----------------------------------------------------------- discovery
 
@@ -147,6 +254,14 @@ class ClaudeCodeAdapter(ObserveOnlyAdapter):
         if path is None:
             await self.discover_sessions()
             path = self._paths.get(native_id)
+        if path is None and native_id in self._owned:
+            # SDK-launched sessions create their transcript slightly after
+            # launch() returns; wait for it instead of misreporting STOPPED.
+            deadline = time.time() + self._transcript_wait_s
+            while path is None and time.time() < deadline and not self._stopped:
+                await asyncio.sleep(self._poll_interval)
+                await self.discover_sessions()
+                path = self._paths.get(native_id)
         if path is None:
             await ctx.report(
                 StateObservation(

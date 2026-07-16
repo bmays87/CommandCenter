@@ -52,6 +52,40 @@ The names in the project brief map as follows: `AgentStarted` → `session.start
 Permission requests and agent questions share one mechanism deliberately: both are
 "the agent is blocked on a human," differing only in answer type.
 
+## Interaction Events (Phase 2)
+
+An `Interaction` is "the agent is blocked on a human." The Mediation Service is
+the only writer of `interaction.*` events and accepts **exactly one resolution**
+per interaction — first answer wins; later answers are rejected (HTTP 409 at the
+API). Payloads (v1):
+
+- `interaction.requested` — `{"interaction": {id, session_id, adapter, native_id,
+  kind: "permission"|"question", title, body, options[], requested_at,
+  timeout_at?, status, ...}}` (full Interaction dump; state is rebuilt from this
+  plus the resolution events).
+- `interaction.answered` — `{"interaction_id", "answer": {decision?:
+  "allow"|"deny", text, updated_input?}, "answered_by"}`.
+- `interaction.timed_out` — `{"interaction_id"}`. A timed-out **permission** is
+  auto-denied toward the agent; a timed-out question simply expires.
+- `interaction.cancelled` — `{"interaction_id", "reason"}`. Emitted when the
+  adapter withdraws the interaction (e.g. it was answered in the terminal) or
+  when a pending interaction is orphaned by a server restart (ADR-0007).
+
+All interaction events carry the owning `session_id` in the envelope and
+`source: "mediation"`.
+
+## Notification Events (Phase 2)
+
+The Notifier routes selected events to channels per `PRODEO_NOTIFY_RULES`
+(pattern → channel names) and reports the outcome (`source: "notifier"`):
+
+- `notification.sent` — `{"channel", "event_id", "title"}` (`event_id` is the
+  event that triggered the notification).
+- `notification.failed` — same fields plus `"error"`. Channel failures are
+  contained: they produce this event, never an exception in the core.
+
+`notification.*` events are themselves never routed (loop guard).
+
 ## Session State Machine
 
 ```

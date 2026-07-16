@@ -8,8 +8,10 @@ import sys
 from pathlib import Path
 
 from prodeo import __version__
+from prodeo.adapters import AdapterManager
 from prodeo.api import create_app
 from prodeo.bus import InProcessEventBus
+from prodeo.mediation import MediationService
 from prodeo.persistence import SqliteEventStore
 from prodeo.sessions import SessionRegistry
 
@@ -17,10 +19,14 @@ from prodeo.sessions import SessionRegistry
 def main() -> None:
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("dashboard") / "openapi.json"
     bus = InProcessEventBus()
+    registry = SessionRegistry(bus)
+    mediation = MediationService(bus)
     app = create_app(
-        registry=SessionRegistry(bus),
+        registry=registry,
         store=SqliteEventStore(Path("unused.db")),  # never opened; schema only
         bus=bus,
+        mediation=mediation,
+        manager=AdapterManager(bus, registry, mediation, data_dir=Path("unused")),
         node="schema",
         version=__version__,
     )

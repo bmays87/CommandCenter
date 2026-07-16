@@ -12,11 +12,13 @@ from prodeo.adapters.context import AdapterContext
 from prodeo.adapters.interface import (
     ADAPTER_API_VERSION,
     AgentAdapter,
+    InteractionRef,
     LaunchSpec,
     SessionRef,
 )
 from prodeo.adapters.observations import Observation
 from prodeo.errors import CapabilityNotSupportedError
+from prodeo.mediation.model import Answer
 from prodeo.sessions.model import SessionDescriptor
 
 
@@ -104,6 +106,15 @@ class AdapterConformanceSuite:
             if not caps.send_prompts:
                 with pytest.raises(expected):
                     await adapter.send_prompt(ref, "hello")
+            if not (caps.respond_to_permissions or caps.answer_questions):
+                iref = InteractionRef(
+                    adapter=adapter.metadata.name,
+                    session_native_id="x",
+                    interaction_id="x",
+                    native_id="x",
+                )
+                with pytest.raises(expected):
+                    await adapter.respond(iref, Answer(decision="deny"))
 
     @pytest.mark.asyncio
     async def test_discovery_returns_valid_unique_descriptors(

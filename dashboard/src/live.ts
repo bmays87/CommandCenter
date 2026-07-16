@@ -12,6 +12,7 @@ export function useLiveEvents(types: string, onEvents: EventHandler): void {
   handlerRef.current = onEvents;
 
   useEffect(() => {
+    if (!types) return; // empty pattern = live updates off
     let ws: WebSocket | null = null;
     let closed = false;
     let backoff = 500;

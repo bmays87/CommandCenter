@@ -14,6 +14,8 @@ dependencies = [
     "fastapi>=0.111",
     "uvicorn>=0.30",
     "websockets>=12",
+    # ntfy notification channel (plain async HTTP POSTs)
+    "httpx>=0.27",
 ]
 
 [project.scripts]

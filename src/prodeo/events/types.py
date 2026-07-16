@@ -1,4 +1,4 @@
-"""Well-known core event type names (Phase 1 subset).
+"""Well-known core event type names.
 
 Names follow the taxonomy in docs/architecture/event-model.md:
 dot-namespaced, past tense.
@@ -33,6 +33,17 @@ AGENT_TURN_COMPLETED: Final = "agent.turn_completed"
 TOOL_STARTED: Final = "tool.started"
 TOOL_FINISHED: Final = "tool.finished"
 TOOL_FAILED: Final = "tool.failed"
+
+# interactions ("the agent is blocked on a human"). One mechanism for
+# permission requests and questions; the payload's ``kind`` differentiates.
+INTERACTION_REQUESTED: Final = "interaction.requested"
+INTERACTION_ANSWERED: Final = "interaction.answered"
+INTERACTION_TIMED_OUT: Final = "interaction.timed_out"
+INTERACTION_CANCELLED: Final = "interaction.cancelled"
+
+# notifications
+NOTIFICATION_SENT: Final = "notification.sent"
+NOTIFICATION_FAILED: Final = "notification.failed"
 
 # adapter lifecycle
 ADAPTER_LOADED: Final = "adapter.loaded"

@@ -1,29 +1,53 @@
-"""The FastAPI application: REST queries + the WebSocket event stream.
+"""The FastAPI application: REST queries, commands, + the WebSocket stream.
 
-The API is a thin, read-only view over the Session Registry and the event
-log in Phase 1. Commands (answering interactions, launching sessions) arrive
-in Phase 2. The dashboard is served from ``dashboard_dir`` when it exists, so
-a single process serves both API and UI.
+Queries are a thin view over the Session Registry, Mediation Service, and the
+event log. Commands (answering interactions, launching/terminating sessions)
+flow inward to the injected services and may be rejected; the resulting facts
+flow outward on the bus. The dashboard is served from ``dashboard_dir`` when
+it exists, so a single process serves both API and UI.
 """
 
 import asyncio
 import contextlib
 from pathlib import Path
+from typing import Any, Literal
 
 import structlog
-from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from prodeo.adapters import AdapterManager, LaunchSpec
 from prodeo.api.auth import make_auth_dependency, websocket_authorized
 from prodeo.bus.interface import BackpressurePolicy, EventBus, matches
+from prodeo.errors import (
+    AdapterOperationError,
+    CapabilityNotSupportedError,
+    InteractionAlreadyResolvedError,
+    ProdeoError,
+    UnknownAdapterError,
+    UnknownInteractionError,
+    UnknownSessionError,
+)
 from prodeo.events import Event
+from prodeo.mediation import Answer, Interaction, InteractionStatus, MediationService
 from prodeo.persistence.interface import EventQuery, EventStore
 from prodeo.sessions import Session, SessionRegistry
 
 _log = structlog.get_logger(__name__)
 
 MAX_EVENT_LIMIT = 1000
+
+#: Domain errors -> HTTP status. Anything else under ProdeoError is a 500.
+_ERROR_STATUS: dict[type[ProdeoError], int] = {
+    UnknownSessionError: 404,
+    UnknownInteractionError: 404,
+    UnknownAdapterError: 400,
+    CapabilityNotSupportedError: 400,
+    InteractionAlreadyResolvedError: 409,
+    AdapterOperationError: 502,
+}
 
 
 class HealthResponse(BaseModel):
@@ -42,11 +66,40 @@ class EventListResponse(BaseModel):
     cursor: str | None
 
 
+class InteractionListResponse(BaseModel):
+    interactions: list[Interaction]
+    pending: int
+
+
+class AnswerRequest(BaseModel):
+    """A human's answer: ``decision`` for permissions, ``text`` for questions
+    (or the deny reason)."""
+
+    decision: Literal["allow", "deny"] | None = None
+    text: str = ""
+    updated_input: dict[str, Any] | None = None
+
+
+class LaunchRequest(BaseModel):
+    adapter: str
+    project: str = ""
+    prompt: str = ""
+    model: str = ""
+    permission_mode: str = ""
+    options: dict[str, Any] = Field(default_factory=dict)
+
+
+class PromptRequest(BaseModel):
+    prompt: str
+
+
 def create_app(
     *,
     registry: SessionRegistry,
     store: EventStore,
     bus: EventBus,
+    mediation: MediationService,
+    manager: AdapterManager,
     node: str,
     version: str,
     api_token: str | None = None,
@@ -54,6 +107,11 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="Prodeo Command Center", version=version)
     auth = Depends(make_auth_dependency(api_token))
+
+    @app.exception_handler(ProdeoError)
+    async def domain_error(_request: Request, exc: ProdeoError) -> JSONResponse:
+        status = _ERROR_STATUS.get(type(exc), 500)
+        return JSONResponse(status_code=status, content={"detail": str(exc)})
 
     @app.get("/api/health", response_model=HealthResponse)
     async def health() -> HealthResponse:  # health is unauthenticated by design
@@ -73,14 +131,26 @@ def create_app(
     @app.get("/api/events", response_model=EventListResponse, dependencies=[auth])
     async def list_events(
         after: str | None = None,
+        before: str | None = Query(None, description="exclusive cursor for paging backward"),
         type: str = Query("*", description="event type pattern: exact, `ns.*`, or `*`"),
         session: str | None = None,
         limit: int = Query(500, ge=1, le=MAX_EVENT_LIMIT),
+        order: Literal["asc", "desc"] = Query("asc", description="`desc` = newest first"),
     ) -> EventListResponse:
         events = await store.query(
-            EventQuery(after_id=after, type_pattern=type, session_id=session, limit=limit)
+            EventQuery(
+                after_id=after,
+                before_id=before,
+                type_pattern=type,
+                session_id=session,
+                limit=limit,
+                order=order,
+            )
         )
-        return EventListResponse(events=events, cursor=events[-1].id if events else after)
+        # The cursor continues the walk in the requested direction: pass it as
+        # `after` (asc) or `before` (desc) on the next request.
+        fallback = after if order == "asc" else before
+        return EventListResponse(events=events, cursor=events[-1].id if events else fallback)
 
     @app.get(
         "/api/sessions/{session_id}/events",
@@ -99,6 +169,66 @@ def create_app(
             EventQuery(after_id=after, type_pattern=type, session_id=session_id, limit=limit)
         )
         return EventListResponse(events=events, cursor=events[-1].id if events else after)
+
+    @app.get(
+        "/api/interactions",
+        response_model=InteractionListResponse,
+        dependencies=[auth],
+    )
+    async def list_interactions(
+        status: InteractionStatus | None = None,
+        session: str | None = None,
+    ) -> InteractionListResponse:
+        return InteractionListResponse(
+            interactions=mediation.list_interactions(status=status, session_id=session),
+            pending=mediation.pending_count(),
+        )
+
+    @app.post(
+        "/api/interactions/{interaction_id}/answer",
+        response_model=Interaction,
+        dependencies=[auth],
+    )
+    async def answer_interaction(interaction_id: str, body: AnswerRequest) -> Interaction:
+        """Resolve an interaction; the first answer wins (409 afterwards)."""
+        answer = Answer(decision=body.decision, text=body.text, updated_input=body.updated_input)
+        return await mediation.answer(interaction_id, answer, answered_by="api")
+
+    @app.post("/api/sessions", response_model=Session, status_code=201, dependencies=[auth])
+    async def launch_session(body: LaunchRequest) -> Session:
+        """Launch a new agent run through a control-capable adapter."""
+        spec = LaunchSpec(
+            project=body.project,
+            prompt=body.prompt,
+            model=body.model,
+            permission_mode=body.permission_mode,
+            options=body.options,
+        )
+        return await manager.launch(body.adapter, spec)
+
+    @app.post(
+        "/api/sessions/{session_id}/terminate",
+        response_model=Session,
+        dependencies=[auth],
+    )
+    async def terminate_session(session_id: str) -> Session:
+        await manager.terminate(session_id)
+        session = registry.get(session_id)
+        if session is None:  # pragma: no cover - terminate already 404s first
+            raise HTTPException(status_code=404, detail="unknown session")
+        return session
+
+    @app.post(
+        "/api/sessions/{session_id}/prompt",
+        response_model=Session,
+        dependencies=[auth],
+    )
+    async def prompt_session(session_id: str, body: PromptRequest) -> Session:
+        await manager.send_prompt(session_id, body.prompt)
+        session = registry.get(session_id)
+        if session is None:  # pragma: no cover - send_prompt already 404s first
+            raise HTTPException(status_code=404, detail="unknown session")
+        return session
 
     @app.websocket("/api/ws/events")
     async def event_stream(ws: WebSocket) -> None:

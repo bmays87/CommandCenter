@@ -10,6 +10,10 @@ from prodeo.adapters import (
     AdapterContext,
     AdapterManager,
     AdapterMetadata,
+    InteractionClosedObservation,
+    InteractionObservation,
+    InteractionRef,
+    LaunchSpec,
     ObserveOnlyAdapter,
     OutputObservation,
     SessionRef,
@@ -19,8 +23,15 @@ from prodeo.adapters import (
 )
 from prodeo.adapters.manager import MAX_OUTPUT_CHARS
 from prodeo.bus import InProcessEventBus
+from prodeo.errors import (
+    AdapterOperationError,
+    CapabilityNotSupportedError,
+    UnknownAdapterError,
+    UnknownSessionError,
+)
 from prodeo.events import Event
 from prodeo.events import types as ev
+from prodeo.mediation import Answer, InteractionKind, InteractionStatus, MediationService
 from prodeo.sessions import SessionDescriptor, SessionRegistry, SessionState
 
 
@@ -74,10 +85,15 @@ def registry(bus: InProcessEventBus) -> SessionRegistry:
 
 
 def make_manager(
-    bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
+    bus: InProcessEventBus,
+    registry: SessionRegistry,
+    tmp_path: Path,
+    mediation: MediationService | None = None,
 ) -> AdapterManager:
     # discovery_interval=0 disables the periodic loop; tests drive discovery.
-    return AdapterManager(bus, registry, data_dir=tmp_path, discovery_interval=0)
+    return AdapterManager(
+        bus, registry, mediation or MediationService(bus), data_dir=tmp_path, discovery_interval=0
+    )
 
 
 @pytest.mark.asyncio
@@ -241,4 +257,254 @@ async def test_crashed_watch_is_restarted(
     assert adapter.attempts == 2
     errors = await _drain(sub)
     assert [e.payload["error"] for e in errors] == ["watch_crashed"]
+    await manager.stop()
+
+
+class ControlAdapter(ScriptedAdapter):
+    """Test double with the full control surface, recording every call."""
+
+    def __init__(self, name: str = "controlled") -> None:
+        super().__init__(name)
+        self.capabilities = AdapterCapabilities(
+            launch=True,
+            terminate=True,
+            respond_to_permissions=True,
+            answer_questions=True,
+            send_prompts=True,
+        )
+        self.descriptors = []
+        self.launched: list[LaunchSpec] = []
+        self.terminated: list[SessionRef] = []
+        self.responses: list[tuple[InteractionRef, Answer]] = []
+        self.prompts: list[tuple[SessionRef, str]] = []
+
+    async def launch(self, spec: LaunchSpec) -> SessionRef:
+        self.launched.append(spec)
+        return SessionRef(adapter=self.metadata.name, native_id="launched-1", session_id="")
+
+    async def terminate(self, session: SessionRef) -> None:
+        self.terminated.append(session)
+
+    async def respond(self, interaction: InteractionRef, answer: Answer) -> None:
+        self.responses.append((interaction, answer))
+
+    async def send_prompt(self, session: SessionRef, prompt: str) -> None:
+        self.prompts.append((session, prompt))
+
+
+@pytest.mark.asyncio
+async def test_launch_registers_session_and_watches(
+    bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
+) -> None:
+    adapter = ControlAdapter()
+    manager = make_manager(bus, registry, tmp_path)
+    manager.add(adapter)
+    await manager.start()
+
+    session = await manager.launch("controlled", LaunchSpec(project="/p", prompt="do the thing"))
+
+    assert adapter.launched[0].prompt == "do the thing"
+    assert session.native_id == "launched-1"
+    assert session.state == SessionState.STARTING
+    assert session.metadata["controlled"] == "true"
+    await asyncio.wait_for(adapter.watch_started.wait(), timeout=1)
+    assert adapter.watched[0].session_id == session.id
+    await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_launch_refused_without_capability_or_adapter(
+    bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
+) -> None:
+    manager = make_manager(bus, registry, tmp_path)
+    manager.add(ScriptedAdapter())
+    await manager.start()
+
+    with pytest.raises(CapabilityNotSupportedError):
+        await manager.launch("scripted", LaunchSpec())
+    with pytest.raises(UnknownAdapterError):
+        await manager.launch("ghost", LaunchSpec())
+    await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_launch_failure_is_contained_and_reported(
+    bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
+) -> None:
+    class Exploding(ControlAdapter):
+        async def launch(self, spec: LaunchSpec) -> SessionRef:
+            raise RuntimeError("no binary")
+
+    manager = make_manager(bus, registry, tmp_path)
+    manager.add(Exploding())
+    await manager.start()
+    sub = bus.subscribe("adapter.error", name="probe")
+
+    with pytest.raises(AdapterOperationError):
+        await manager.launch("controlled", LaunchSpec())
+
+    (event,) = await _drain(sub)
+    assert event.payload["error"] == "launch_failed"
+    await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_terminate_and_send_prompt_dispatch(
+    bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
+) -> None:
+    adapter = ControlAdapter()
+    manager = make_manager(bus, registry, tmp_path)
+    manager.add(adapter)
+    await manager.start()
+    session = await manager.launch("controlled", LaunchSpec(project="/p"))
+
+    await manager.send_prompt(session.id, "and another thing")
+    await manager.terminate(session.id)
+
+    assert adapter.prompts[0][1] == "and another thing"
+    assert adapter.terminated[0].native_id == "launched-1"
+    with pytest.raises(UnknownSessionError):
+        await manager.terminate("nope")
+    await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_interaction_observation_opens_mediation_and_answer_routes_back(
+    bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
+) -> None:
+    adapter = ControlAdapter()
+    mediation = MediationService(bus)
+    manager = make_manager(bus, registry, tmp_path, mediation)
+    manager.add(adapter)
+    await manager.start()
+    session = await manager.launch("controlled", LaunchSpec(project="/p"))
+    await registry.observe_state(session.id, SessionState.RUNNING, reason="test")
+    assert adapter.ctx is not None
+    sub = bus.subscribe("interaction.*", name="probe")
+
+    await adapter.ctx.report(
+        InteractionObservation(
+            native_id="launched-1",
+            interaction_native_id="tool-9",
+            kind=InteractionKind.PERMISSION,
+            title="Run rm?",
+        )
+    )
+
+    assert session.state == SessionState.WAITING_ON_USER
+    (pending,) = mediation.list_interactions(status=InteractionStatus.PENDING)
+    assert pending.session_id == session.id
+
+    await mediation.answer(pending.id, Answer(decision="allow"), answered_by="test")
+
+    ref, answer = adapter.responses[0]
+    assert ref.interaction_id == pending.id
+    assert ref.native_id == "tool-9"
+    assert ref.session_native_id == "launched-1"
+    assert answer.decision == "allow"
+    resumed = registry.get(session.id)
+    assert resumed is not None and resumed.state == SessionState.RUNNING
+
+    types = [e.type for e in await _drain(sub)]
+    assert types == [ev.INTERACTION_REQUESTED, ev.INTERACTION_ANSWERED]
+    await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_interaction_without_capability_becomes_adapter_error(
+    bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
+) -> None:
+    adapter = ScriptedAdapter()
+    mediation = MediationService(bus)
+    manager = make_manager(bus, registry, tmp_path, mediation)
+    manager.add(adapter)
+    await manager.start()
+    assert adapter.ctx is not None
+    sub = bus.subscribe("adapter.error", name="probe")
+
+    await adapter.ctx.report(
+        InteractionObservation(
+            native_id="n1",
+            interaction_native_id="t1",
+            kind=InteractionKind.PERMISSION,
+            title="?",
+        )
+    )
+
+    (event,) = await _drain(sub)
+    assert event.payload["error"] == "interaction_capability_missing"
+    assert mediation.pending_count() == 0
+    await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_interaction_closed_cancels_and_resumes(
+    bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
+) -> None:
+    adapter = ControlAdapter()
+    mediation = MediationService(bus)
+    manager = make_manager(bus, registry, tmp_path, mediation)
+    manager.add(adapter)
+    await manager.start()
+    session = await manager.launch("controlled", LaunchSpec(project="/p"))
+    await registry.observe_state(session.id, SessionState.RUNNING, reason="test")
+    assert adapter.ctx is not None
+
+    await adapter.ctx.report(
+        InteractionObservation(
+            native_id="launched-1",
+            interaction_native_id="tool-9",
+            kind=InteractionKind.QUESTION,
+            title="Which one?",
+        )
+    )
+    assert session.state == SessionState.WAITING_ON_USER
+
+    await adapter.ctx.report(
+        InteractionClosedObservation(
+            native_id="launched-1", interaction_native_id="tool-9", reason="answered_in_terminal"
+        )
+    )
+
+    resumed = registry.get(session.id)
+    assert resumed is not None and resumed.state == SessionState.RUNNING
+    assert adapter.responses == []
+    (interaction,) = mediation.list_interactions()
+    assert interaction.status == InteractionStatus.CANCELLED
+    await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_failed_respond_is_contained_as_adapter_error(
+    bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
+) -> None:
+    class BrokenRespond(ControlAdapter):
+        async def respond(self, interaction: InteractionRef, answer: Answer) -> None:
+            raise RuntimeError("agent went away")
+
+    adapter = BrokenRespond()
+    mediation = MediationService(bus)
+    manager = make_manager(bus, registry, tmp_path, mediation)
+    manager.add(adapter)
+    await manager.start()
+    session = await manager.launch("controlled", LaunchSpec(project="/p"))
+    await registry.observe_state(session.id, SessionState.RUNNING, reason="test")
+    assert adapter.ctx is not None
+    await adapter.ctx.report(
+        InteractionObservation(
+            native_id="launched-1",
+            interaction_native_id="t1",
+            kind=InteractionKind.PERMISSION,
+            title="?",
+        )
+    )
+    (pending,) = mediation.list_interactions(status=InteractionStatus.PENDING)
+    sub = bus.subscribe("adapter.error", name="probe")
+
+    answered = await mediation.answer(pending.id, Answer(decision="allow"))
+
+    assert answered.status == InteractionStatus.ANSWERED  # the decision stands
+    (event,) = await _drain(sub)
+    assert event.payload["error"] == "respond_failed"
+    assert session.state == SessionState.WAITING_ON_USER  # honest: agent still blocked
     await manager.stop()

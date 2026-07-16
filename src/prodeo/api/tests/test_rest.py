@@ -1,4 +1,7 @@
-"""REST surface: health, sessions, events, auth. (WS is covered in tests/integration.)"""
+"""REST surface: health, sessions, events, commands, auth.
+
+(WS is covered in tests/integration.)
+"""
 
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -7,12 +10,66 @@ import httpx
 import pytest
 import pytest_asyncio
 
+from prodeo.adapters import (
+    AdapterCapabilities,
+    AdapterContext,
+    AdapterManager,
+    AdapterMetadata,
+    InteractionRef,
+    LaunchSpec,
+    ObserveOnlyAdapter,
+    SessionRef,
+)
 from prodeo.api import create_app
 from prodeo.bus import InProcessEventBus
+from prodeo.mediation import (
+    Answer,
+    Interaction,
+    InteractionKind,
+    InteractionRequest,
+    MediationService,
+)
 from prodeo.persistence import EventRecorder, SqliteEventStore
 from prodeo.sessions import SessionDescriptor, SessionRegistry, SessionState
 
 TOKEN = "secret-token"
+
+
+class FakeControlAdapter(ObserveOnlyAdapter):
+    """Minimal control-capable adapter for exercising the command routes."""
+
+    def __init__(self) -> None:
+        self.metadata = AdapterMetadata(name="fake", version="0.0.1")
+        self.capabilities = AdapterCapabilities(
+            launch=True, terminate=True, respond_to_permissions=True, send_prompts=True
+        )
+        self.responses: list[tuple[InteractionRef, Answer]] = []
+        self.terminated: list[str] = []
+        self.prompts: list[str] = []
+
+    async def start(self, ctx: AdapterContext) -> None:
+        pass
+
+    async def stop(self) -> None:
+        pass
+
+    async def discover_sessions(self) -> list[SessionDescriptor]:
+        return []
+
+    async def watch(self, session: SessionRef) -> None:
+        pass
+
+    async def launch(self, spec: LaunchSpec) -> SessionRef:
+        return SessionRef(adapter="fake", native_id="launched-1", session_id="")
+
+    async def terminate(self, session: SessionRef) -> None:
+        self.terminated.append(session.native_id)
+
+    async def respond(self, interaction: InteractionRef, answer: Answer) -> None:
+        self.responses.append((interaction, answer))
+
+    async def send_prompt(self, session: SessionRef, prompt: str) -> None:
+        self.prompts.append(prompt)
 
 
 class Env:
@@ -21,10 +78,18 @@ class Env:
         self.store = SqliteEventStore(tmp_path / "events.db")
         self.recorder = EventRecorder(self.bus, self.store)
         self.registry = SessionRegistry(self.bus)
+        self.mediation = MediationService(self.bus)
+        self.adapter = FakeControlAdapter()
+        self.manager = AdapterManager(
+            self.bus, self.registry, self.mediation, data_dir=tmp_path, discovery_interval=0
+        )
+        self.manager.add(self.adapter)
         app = create_app(
             registry=self.registry,
             store=self.store,
             bus=self.bus,
+            mediation=self.mediation,
+            manager=self.manager,
             node="test-node",
             version="0.0-test",
             api_token=TOKEN,
@@ -42,8 +107,10 @@ async def env(tmp_path: Path) -> AsyncIterator[Env]:
     e = Env(tmp_path)
     await e.store.open()
     await e.recorder.start()
+    await e.manager.start()
     yield e
     await e.client.aclose()
+    await e.manager.stop()
     await e.recorder.stop()
     await e.bus.close()
     await e.store.close()
@@ -120,3 +187,108 @@ async def test_openapi_schema_is_served(env: Env) -> None:
     resp = await env.client.get("/openapi.json", headers={"Authorization": ""})
     assert resp.status_code == 200
     assert "/api/sessions" in resp.json()["paths"]
+
+
+async def _open_interaction(env: Env) -> str:
+    """Open one pending permission interaction; returns its id."""
+    session = await env.registry.upsert_discovered("fake", SessionDescriptor(native_id="n1"))
+
+    async def deliver(interaction: Interaction, answer: Answer) -> None:
+        ref = InteractionRef(
+            adapter="fake",
+            session_native_id="n1",
+            interaction_id=interaction.id,
+            native_id="tool-1",
+        )
+        await env.adapter.respond(ref, answer)
+
+    interaction = await env.mediation.open(
+        InteractionRequest(
+            session_id=session.id,
+            adapter="fake",
+            native_id="tool-1",
+            kind=InteractionKind.PERMISSION,
+            title="Run rm?",
+        ),
+        deliver,
+    )
+    return interaction.id
+
+
+@pytest.mark.asyncio
+async def test_interactions_listing_and_filters(env: Env) -> None:
+    interaction_id = await _open_interaction(env)
+
+    body = (await env.client.get("/api/interactions")).json()
+    assert body["pending"] == 1
+    assert [i["id"] for i in body["interactions"]] == [interaction_id]
+    assert body["interactions"][0]["kind"] == "permission"
+
+    pending = (await env.client.get("/api/interactions", params={"status": "pending"})).json()
+    assert len(pending["interactions"]) == 1
+    none = (await env.client.get("/api/interactions", params={"status": "answered"})).json()
+    assert none["interactions"] == []
+
+
+@pytest.mark.asyncio
+async def test_answer_interaction_first_wins_then_409(env: Env) -> None:
+    interaction_id = await _open_interaction(env)
+
+    resp = await env.client.post(
+        f"/api/interactions/{interaction_id}/answer", json={"decision": "allow"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "answered"
+    assert [a.decision for _r, a in env.adapter.responses] == ["allow"]
+
+    again = await env.client.post(
+        f"/api/interactions/{interaction_id}/answer", json={"decision": "deny"}
+    )
+    assert again.status_code == 409
+    assert len(env.adapter.responses) == 1
+
+    missing = await env.client.post("/api/interactions/nope/answer", json={"decision": "allow"})
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_launch_terminate_prompt_roundtrip(env: Env) -> None:
+    resp = await env.client.post(
+        "/api/sessions", json={"adapter": "fake", "project": "/p", "prompt": "fix the bug"}
+    )
+    assert resp.status_code == 201
+    session = resp.json()
+    assert session["native_id"] == "launched-1"
+    assert session["state"] == "starting"
+
+    prompted = await env.client.post(
+        f"/api/sessions/{session['id']}/prompt", json={"prompt": "also add tests"}
+    )
+    assert prompted.status_code == 200
+    assert env.adapter.prompts == ["also add tests"]
+
+    terminated = await env.client.post(f"/api/sessions/{session['id']}/terminate")
+    assert terminated.status_code == 200
+    assert env.adapter.terminated == ["launched-1"]
+
+    assert (await env.client.post("/api/sessions/nope/terminate")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_launch_unknown_adapter_is_400(env: Env) -> None:
+    resp = await env.client.post("/api/sessions", json={"adapter": "ghost"})
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_commands_require_auth(env: Env) -> None:
+    headers = {"Authorization": ""}
+    assert (
+        await env.client.post("/api/sessions", json={"adapter": "fake"}, headers=headers)
+    ).status_code == 401
+    assert (
+        await env.client.post(
+            "/api/interactions/x/answer", json={"decision": "allow"}, headers=headers
+        )
+    ).status_code == 401
+    assert (await env.client.get("/api/interactions", headers=headers)).status_code == 401

@@ -6,12 +6,15 @@ from prodeo.adapters.interface import (
     AdapterCapabilities,
     AdapterMetadata,
     AgentAdapter,
+    InteractionRef,
     LaunchSpec,
     ObserveOnlyAdapter,
     SessionRef,
 )
 from prodeo.adapters.manager import AdapterManager
 from prodeo.adapters.observations import (
+    InteractionClosedObservation,
+    InteractionObservation,
     Observation,
     OutputObservation,
     SessionObservation,
@@ -29,6 +32,9 @@ __all__ = [
     "AdapterManager",
     "AdapterMetadata",
     "AgentAdapter",
+    "InteractionClosedObservation",
+    "InteractionObservation",
+    "InteractionRef",
     "LaunchSpec",
     "Observation",
     "ObserveOnlyAdapter",

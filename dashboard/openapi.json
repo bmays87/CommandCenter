@@ -1,6 +1,84 @@
 {
   "components": {
     "schemas": {
+      "Answer": {
+        "description": "A human's resolution of an interaction.\n\nPermissions use ``decision`` (optionally with ``updated_input`` to run the\ntool with edited arguments); questions use ``text``. For a denied\npermission, ``text`` carries the reason shown to the agent.",
+        "properties": {
+          "decision": {
+            "anyOf": [
+              {
+                "enum": [
+                  "allow",
+                  "deny"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          },
+          "updated_input": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated Input"
+          }
+        },
+        "title": "Answer",
+        "type": "object"
+      },
+      "AnswerRequest": {
+        "description": "A human's answer: ``decision`` for permissions, ``text`` for questions\n(or the deny reason).",
+        "properties": {
+          "decision": {
+            "anyOf": [
+              {
+                "enum": [
+                  "allow",
+                  "deny"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          },
+          "updated_input": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated Input"
+          }
+        },
+        "title": "AnswerRequest",
+        "type": "object"
+      },
       "Event": {
         "description": "Immutable envelope for a single event.\n\n``id`` is a ULID, so lexicographic order is chronological order - clients\nuse it as a cursor when reconciling after a disconnect.",
         "properties": {
@@ -128,6 +206,195 @@
           "node"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "Interaction": {
+        "description": "The canonical record of one interaction (mutable, like Session).",
+        "properties": {
+          "adapter": {
+            "title": "Adapter",
+            "type": "string"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Answer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "answered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered At"
+          },
+          "answered_by": {
+            "default": "",
+            "title": "Answered By",
+            "type": "string"
+          },
+          "body": {
+            "default": "",
+            "title": "Body",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/InteractionKind"
+          },
+          "native_id": {
+            "title": "Native Id",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "requested_at": {
+            "format": "date-time",
+            "title": "Requested At",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/InteractionStatus",
+            "default": "pending"
+          },
+          "timeout_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeout At"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "session_id",
+          "adapter",
+          "native_id",
+          "kind",
+          "title",
+          "requested_at"
+        ],
+        "title": "Interaction",
+        "type": "object"
+      },
+      "InteractionKind": {
+        "enum": [
+          "permission",
+          "question"
+        ],
+        "title": "InteractionKind",
+        "type": "string"
+      },
+      "InteractionListResponse": {
+        "properties": {
+          "interactions": {
+            "items": {
+              "$ref": "#/components/schemas/Interaction"
+            },
+            "title": "Interactions",
+            "type": "array"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "interactions",
+          "pending"
+        ],
+        "title": "InteractionListResponse",
+        "type": "object"
+      },
+      "InteractionStatus": {
+        "enum": [
+          "pending",
+          "answered",
+          "timed_out",
+          "cancelled"
+        ],
+        "title": "InteractionStatus",
+        "type": "string"
+      },
+      "LaunchRequest": {
+        "properties": {
+          "adapter": {
+            "title": "Adapter",
+            "type": "string"
+          },
+          "model": {
+            "default": "",
+            "title": "Model",
+            "type": "string"
+          },
+          "options": {
+            "additionalProperties": true,
+            "title": "Options",
+            "type": "object"
+          },
+          "permission_mode": {
+            "default": "",
+            "title": "Permission Mode",
+            "type": "string"
+          },
+          "project": {
+            "default": "",
+            "title": "Project",
+            "type": "string"
+          },
+          "prompt": {
+            "default": "",
+            "title": "Prompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "adapter"
+        ],
+        "title": "LaunchRequest",
+        "type": "object"
+      },
+      "PromptRequest": {
+        "properties": {
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "title": "PromptRequest",
         "type": "object"
       },
       "Session": {
@@ -305,6 +572,24 @@
             }
           },
           {
+            "description": "exclusive cursor for paging backward",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "exclusive cursor for paging backward",
+              "title": "Before"
+            }
+          },
+          {
             "description": "event type pattern: exact, `ns.*`, or `*`",
             "in": "query",
             "name": "type",
@@ -342,6 +627,22 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "description": "`desc` = newest first",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "description": "`desc` = newest first",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Order",
+              "type": "string"
             }
           }
         ],
@@ -388,6 +689,118 @@
         "summary": "Health"
       }
     },
+    "/api/interactions": {
+      "get": {
+        "operationId": "list_interactions_api_interactions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/InteractionStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InteractionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Interactions"
+      }
+    },
+    "/api/interactions/{interaction_id}/answer": {
+      "post": {
+        "description": "Resolve an interaction; the first answer wins (409 afterwards).",
+        "operationId": "answer_interaction_api_interactions__interaction_id__answer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interaction_id",
+            "required": true,
+            "schema": {
+              "title": "Interaction Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Interaction"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Answer Interaction"
+      }
+    },
     "/api/sessions": {
       "get": {
         "operationId": "list_sessions_api_sessions_get",
@@ -404,6 +817,43 @@
           }
         },
         "summary": "List Sessions"
+      },
+      "post": {
+        "description": "Launch a new agent run through a control-capable adapter.",
+        "operationId": "launch_session_api_sessions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LaunchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Launch Session"
       }
     },
     "/api/sessions/{session_id}": {
@@ -520,6 +970,94 @@
           }
         },
         "summary": "Session Events"
+      }
+    },
+    "/api/sessions/{session_id}/prompt": {
+      "post": {
+        "operationId": "prompt_session_api_sessions__session_id__prompt_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Prompt Session"
+      }
+    },
+    "/api/sessions/{session_id}/terminate": {
+      "post": {
+        "operationId": "terminate_session_api_sessions__session_id__terminate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Terminate Session"
       }
     }
   }

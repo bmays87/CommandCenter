@@ -22,6 +22,10 @@ adapter gains launch/terminate/respond via hooks + headless mode; dashboard
 interaction inbox and answer controls; Notifier service + first channels (desktop,
 ntfy, webhook); event explorer; optional MongoDB storage backend plugin.
 **Exit:** a user approves an agent's permission request from the dashboard or phone.
+*Shipped* with deliberate deviations: claude-code control uses the Agent SDK
+(ADR-0008) — headless path done, blocking-hook mediation of *interactive* sessions
+deferred; channels are log + ntfy + desktop (webhook dropped for now); MongoDB
+deferred, but the EventStore contract suite (ADR-0003) shipped as its gate.
 
 ## Phase 3 — Orchestrate & Extend
 Scheduler (cron-style agent launches); plugin packaging guide + `adapter-skeleton`

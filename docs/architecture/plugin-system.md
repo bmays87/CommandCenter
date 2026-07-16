@@ -24,7 +24,7 @@ systems. The core ships with sensible defaults; plugins override or extend them.
 | Kind | Interface | Default implementation |
 |---|---|---|
 | `adapter` | `AgentAdapter` | — (claude-code ships separately) |
-| `notifier` | `NotificationChannel` | log-only channel |
+| `notifier` | `NotificationChannel` | log channel (ntfy + desktop built in) |
 | `stt` | `SpeechToText` | — (phase 4; faster-whisper reference) |
 | `tts` | `TextToSpeech` | — (phase 4; Piper reference) |
 | `wakeword` | `WakeWordDetector` | — (phase 4; OpenWakeWord reference) |
@@ -32,6 +32,12 @@ systems. The core ships with sensible defaults; plugins override or extend them.
 | `statestore` | `StateStore` | SQLite |
 | `scheduler` | `Scheduler` | in-process cron |
 | `summarizer` | `Summarizer` | — (optional; Ollama reference) |
+
+Phase 2 status: adapters load via entry points today; built-in notification
+channels (`log`, `ntfy`, `desktop` in `prodeo.notify.channels`) are selected by
+config rather than entry points. Third-party `notifier` plugins arrive with the
+formal Plugin Host (Phase 3) — the `NotificationChannel` Protocol in
+`prodeo.notify.interface` is already the contract they will implement.
 
 ## Security Posture
 

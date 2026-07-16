@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(uv run pytest*)",
+      "PowerShell(uv run ruff*)",
+      "PowerShell(uv run mypy*)",
+      "PowerShell(uv sync*)",
+      "PowerShell(git status*)",
+      "PowerShell(git diff*)",
+      "PowerShell(git add*)",
+      "PowerShell(git commit*)",
+      "PowerShell(New-Item*)",
+      "PowerShell(Copy-Item*)"
+    ]
+  }
+}

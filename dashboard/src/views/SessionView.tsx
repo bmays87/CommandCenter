@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import type { ProdeoEvent } from "../api/types";
 import { projectName, shortTime, timeAgo } from "../format";
 import { useLiveEvents } from "../live";
+import { InteractionCard } from "./InteractionCard";
 
 function payloadText(event: ProdeoEvent): string {
   const payload = (event.payload ?? {}) as Record<string, unknown>;
@@ -58,6 +59,42 @@ function EventRow({ event }: { event: ProdeoEvent }) {
           <span>{event.type === "agent.turn_started" ? "— turn started —" : "— turn completed —"}</span>
         </div>
       );
+    case "interaction.requested": {
+      const interaction = (payload["interaction"] ?? {}) as Record<string, unknown>;
+      return (
+        <div className="event interaction-event">
+          {ts}
+          <span className="interaction-mark">⚑</span>
+          <span>
+            {String(interaction["kind"] ?? "interaction")}: {String(interaction["title"] ?? "")}
+          </span>
+        </div>
+      );
+    }
+    case "interaction.answered": {
+      const answer = (payload["answer"] ?? {}) as Record<string, unknown>;
+      const outcome = answer["decision"] ?? answer["text"] ?? "";
+      return (
+        <div className="event interaction-event">
+          {ts}
+          <span>answered: {String(outcome)} (by {String(payload["answered_by"] ?? "?")})</span>
+        </div>
+      );
+    }
+    case "interaction.timed_out":
+      return (
+        <div className="event interaction-event">
+          {ts}
+          <span>interaction timed out</span>
+        </div>
+      );
+    case "interaction.cancelled":
+      return (
+        <div className="event interaction-event">
+          {ts}
+          <span>interaction cancelled ({String(payload["reason"] ?? "")})</span>
+        </div>
+      );
     default:
       return (
         <div className="event other">
@@ -68,7 +105,7 @@ function EventRow({ event }: { event: ProdeoEvent }) {
   }
 }
 
-const TIMELINE_TYPES = "session.*,agent.*,tool.*";
+const TIMELINE_TYPES = "session.*,agent.*,tool.*,interaction.*";
 
 export function SessionView({ id }: { id: string }) {
   const queryClient = useQueryClient();
@@ -81,6 +118,11 @@ export function SessionView({ id }: { id: string }) {
     queryKey: ["events", id],
     queryFn: () => api.sessionEvents(id),
   });
+  const pending = useQuery({
+    queryKey: ["interactions", id],
+    queryFn: () => api.interactions({ session: id, status: "pending" }),
+    refetchInterval: 15_000,
+  });
 
   useLiveEvents(TIMELINE_TYPES, (batch) => {
     const mine = batch.filter((e) => e.session_id === id);
@@ -88,6 +130,9 @@ export function SessionView({ id }: { id: string }) {
       setLive((prev) => [...prev, ...mine]);
       if (mine.some((e) => e.type.startsWith("session."))) {
         void queryClient.invalidateQueries({ queryKey: ["session", id] });
+      }
+      if (mine.some((e) => e.type.startsWith("interaction."))) {
+        void queryClient.invalidateQueries({ queryKey: ["interactions"] });
       }
     }
   });
@@ -126,6 +171,9 @@ export function SessionView({ id }: { id: string }) {
           </div>
         </header>
       ) : null}
+      {(pending.data?.interactions ?? []).map((interaction) => (
+        <InteractionCard key={interaction.id} interaction={interaction} />
+      ))}
       <div
         className="timeline"
         onScroll={(e) => {

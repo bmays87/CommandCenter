@@ -76,12 +76,15 @@ class SqliteEventStore:
         if q.after_id is not None:
             where.append("id > ?")
             args.append(q.after_id)
+        if q.before_id is not None:
+            where.append("id < ?")
+            args.append(q.before_id)
         if q.session_id is not None:
             where.append("session_id = ?")
             args.append(q.session_id)
         if where:
             sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY id ASC"
+        sql += " ORDER BY id DESC" if q.order == "desc" else " ORDER BY id ASC"
 
         results: list[Event] = []
         async with db.execute(sql, args) as cursor:

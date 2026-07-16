@@ -5,7 +5,7 @@ description = "Prodeo Command Center adapter for Anthropic's Claude Code (observ
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.12"
-dependencies = ["prodeo"]
+dependencies = ["prodeo", "claude-agent-sdk>=0.1"]
 
 [project.entry-points."prodeo.plugins"]
 claude-code = "prodeo_adapter_claude_code:create_adapter"

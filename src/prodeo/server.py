@@ -1,8 +1,8 @@
 """Composition root - the only module where concrete implementations are wired.
 
-Phase 1 boots: bus -> store -> recorder -> registry (rebuilt from the log) ->
-adapter manager (plugins via entry points) -> API server; emits
-``system.started``; then idles until interrupted.
+Boots: bus -> store -> recorder -> registry and mediation (rebuilt from the
+log, in that order) -> adapter manager (plugins via entry points) -> API
+server; emits ``system.started``; then idles until interrupted.
 """
 
 import asyncio
@@ -19,6 +19,9 @@ from prodeo.config import Settings
 from prodeo.events import new_event
 from prodeo.events import types as ev
 from prodeo.logging import configure_logging
+from prodeo.mediation import MediationService
+from prodeo.notify import Notifier
+from prodeo.notify.channels import channels_from_config
 from prodeo.persistence import EventRecorder, SqliteEventStore
 from prodeo.sessions import SessionRegistry
 
@@ -34,19 +37,34 @@ class Server:
         self.store = SqliteEventStore(settings.event_db_path)
         self.recorder = EventRecorder(self.bus, self.store)
         self.registry = SessionRegistry(self.bus, node=settings.node_name)
+        self.mediation = MediationService(
+            self.bus,
+            node=settings.node_name,
+            default_timeout_s=settings.mediation_default_timeout_s,
+        )
         self.adapters = AdapterManager(
             self.bus,
             self.registry,
+            self.mediation,
             data_dir=settings.data_dir,
             node=settings.node_name,
             adapter_config=settings.adapters,
             discovery_interval=settings.discovery_interval_s,
+        )
+        self.notifier = Notifier(
+            self.bus,
+            channels_from_config(settings.notify_channels),
+            settings.notify_rules,
+            node=settings.node_name,
+            public_url=settings.public_url,
         )
         self.api = ApiServer(
             create_app(
                 registry=self.registry,
                 store=self.store,
                 bus=self.bus,
+                mediation=self.mediation,
+                manager=self.adapters,
                 node=settings.node_name,
                 version=__version__,
                 api_token=settings.api_token,
@@ -60,6 +78,8 @@ class Server:
         await self.store.open()
         await self.recorder.start()
         await self.registry.rebuild(self.store)
+        # After the recorder so orphan cancellations reach the log (ADR-0007).
+        await self.mediation.rebuild(self.store)
         await self.bus.publish(
             new_event(
                 ev.SYSTEM_STARTED,
@@ -67,6 +87,7 @@ class Server:
                 payload={"version": __version__},
             )
         )
+        await self.notifier.start()
         await self.adapters.load_entry_points()
         await self.adapters.start()
         await self.api.start()
@@ -80,6 +101,8 @@ class Server:
     async def stop(self) -> None:
         await self.api.stop()
         await self.adapters.stop()
+        await self.notifier.stop()
+        await self.mediation.close()
         await self.bus.publish(new_event(ev.SYSTEM_STOPPING, node=self.settings.node_name))
         await self.recorder.stop()
         await self.bus.close()

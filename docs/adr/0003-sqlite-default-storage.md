@@ -22,6 +22,12 @@ interface is exercised by two real implementations early, which keeps it honest.
 Cost: we maintain two backends; mitigated by a shared contract test suite both must
 pass.
 
+*Phase 2 status*: the shared contract suite shipped as
+`prodeo.persistence.testing.EventStoreContractSuite` (SQLite passes it; see its
+docstring for how a backend adopts it). The MongoDB plugin itself was deferred
+beyond Phase 2 — the suite plus the `EventQuery` cursor semantics are the
+ready-made conformance gate for whenever it (or any other backend) lands.
+
 ## Alternatives Considered
 **MongoDB only** (fails local-first simplicity; SSPL friction). **Postgres default**
 (great engine, same server-dependency problem). **Plain JSONL files** (queryability

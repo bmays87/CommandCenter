@@ -10,9 +10,14 @@ function StateBadge({ state }: { state: string }) {
 }
 
 function SessionCard({ session }: { session: Session }) {
+  const attention = session.state === "waiting_on_user";
   return (
-    <a className={`card ${isActive(session.state ?? "") ? "card-active" : ""}`}
-       href={`#/session/${session.id}`}>
+    <a
+      className={`card ${isActive(session.state ?? "") ? "card-active" : ""} ${
+        attention ? "card-attention" : ""
+      }`}
+      href={`#/session/${session.id}`}
+    >
       <div className="card-top">
         <span className="agent-chip">{session.adapter}</span>
         <StateBadge state={session.state ?? "discovered"} />
@@ -43,7 +48,10 @@ export function FleetView() {
   if (error) return <div className="notice error">{String(error)}</div>;
 
   const sessions = data?.sessions ?? [];
-  const active = sessions.filter((s) => isActive(s.state ?? ""));
+  // Sessions needing a human float to the top of the active grid.
+  const active = sessions
+    .filter((s) => isActive(s.state ?? ""))
+    .sort((a, b) => Number(b.state === "waiting_on_user") - Number(a.state === "waiting_on_user"));
   const historical = sessions.filter((s) => !isActive(s.state ?? ""));
 
   return (

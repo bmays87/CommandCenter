@@ -4,11 +4,12 @@ Adapters teach Command Center to observe (and, capability permitting,
 control) one kind of agent. The core contains zero agent-specific logic.
 """
 
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from prodeo.errors import CapabilityNotSupportedError
+from prodeo.mediation.model import Answer
 from prodeo.sessions.model import SessionDescriptor
 
 if TYPE_CHECKING:
@@ -16,7 +17,8 @@ if TYPE_CHECKING:
 
 #: Bumped when the adapter contract changes incompatibly. Adapters declare
 #: the version they were built against; the manager refuses mismatches.
-ADAPTER_API_VERSION: Final = 1
+#: v2 (Phase 2): ``respond()`` joined the control surface.
+ADAPTER_API_VERSION: Final = 2
 
 
 class AdapterMetadata(BaseModel):
@@ -45,11 +47,24 @@ class SessionRef(BaseModel):
     session_id: str  # Command-Center-assigned
 
 
-class LaunchSpec(BaseModel):
-    """How to start a new agent run (control adapters, Phase 2)."""
+class InteractionRef(BaseModel):
+    """Identifies one interaction across the core/adapter boundary."""
 
-    project: str = ""
+    adapter: str
+    session_native_id: str
+    interaction_id: str  # Command-Center-assigned (ULID)
+    native_id: str  # adapter-native (e.g. a tool_use_id)
+
+
+class LaunchSpec(BaseModel):
+    """How to start a new agent run (control adapters)."""
+
+    project: str = ""  # working directory / project path
     prompt: str = ""
+    model: str = ""
+    permission_mode: str = ""
+    #: Adapter-specific passthrough options (validated by the adapter).
+    options: dict[str, Any] = Field(default_factory=dict)
 
 
 @runtime_checkable
@@ -73,10 +88,12 @@ class AgentAdapter(Protocol):
         """Long-running task; report observations via ``ctx.report(...)``."""
         ...
 
-    # Control (optional - guarded by capabilities; Phase 2 wires these up)
+    # Control (optional - guarded by capabilities)
     async def launch(self, spec: LaunchSpec) -> SessionRef: ...
 
     async def terminate(self, session: SessionRef) -> None: ...
+
+    async def respond(self, interaction: InteractionRef, answer: Answer) -> None: ...
 
     async def send_prompt(self, session: SessionRef, prompt: str) -> None: ...
 
@@ -94,6 +111,9 @@ class ObserveOnlyAdapter:
 
     async def terminate(self, session: SessionRef) -> None:
         raise CapabilityNotSupportedError("terminate")
+
+    async def respond(self, interaction: InteractionRef, answer: Answer) -> None:
+        raise CapabilityNotSupportedError("respond")
 
     async def send_prompt(self, session: SessionRef, prompt: str) -> None:
         raise CapabilityNotSupportedError("send_prompt")

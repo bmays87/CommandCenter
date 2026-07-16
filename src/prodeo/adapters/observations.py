@@ -12,6 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from prodeo.mediation.model import InteractionKind
 from prodeo.sessions.model import SessionDescriptor
 from prodeo.sessions.state import SessionState
 
@@ -71,6 +72,41 @@ class ToolObservation(BaseModel):
     at: datetime | None = None
 
 
+class InteractionObservation(BaseModel):
+    """The agent is blocked on a human (permission request or question).
+
+    The manager verifies the adapter declares the matching respond capability,
+    opens an interaction with the Mediation Service, and moves the session to
+    ``waiting_on_user``. The answer comes back through ``adapter.respond()``.
+    """
+
+    native_id: str
+    interaction_native_id: str  # e.g. a tool_use_id; unique within the adapter
+    kind: InteractionKind
+    title: str
+    body: str = ""
+    options: list[str] = Field(default_factory=list)
+    #: Seconds until auto-resolution; None uses the server default.
+    timeout_s: float | None = None
+    at: datetime | None = None
+
+
+class InteractionClosedObservation(BaseModel):
+    """The agent stopped waiting without an answer from us (e.g. the user
+    answered in the terminal); the pending interaction should be cancelled."""
+
+    native_id: str
+    interaction_native_id: str
+    reason: str = ""
+    at: datetime | None = None
+
+
 Observation = (
-    SessionObservation | StateObservation | OutputObservation | TurnObservation | ToolObservation
+    SessionObservation
+    | StateObservation
+    | OutputObservation
+    | TurnObservation
+    | ToolObservation
+    | InteractionObservation
+    | InteractionClosedObservation
 )

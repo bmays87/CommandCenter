@@ -5,6 +5,9 @@ import type { components } from "./schema";
 export type Session = components["schemas"]["Session"];
 export type ProdeoEvent = components["schemas"]["Event"];
 export type SessionState = Session["state"];
+export type Interaction = components["schemas"]["Interaction"];
+export type AnswerRequest = components["schemas"]["AnswerRequest"];
+export type LaunchRequest = components["schemas"]["LaunchRequest"];
 
 export const ACTIVE_STATES: readonly string[] = [
   "running",

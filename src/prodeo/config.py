@@ -25,6 +25,26 @@ class Settings(BaseSettings):
     #: Where the built dashboard lives; served at ``/`` when present.
     dashboard_dir: Path = Path("dashboard") / "dist"
 
+    # Mediation
+    #: Seconds before an unanswered interaction auto-resolves (permissions
+    #: auto-deny; questions expire). Unset = interactions wait forever.
+    mediation_default_timeout_s: float | None = None
+
+    # Notifications
+    #: Event type pattern -> channel names. From the environment this is JSON,
+    #: e.g. ``PRODEO_NOTIFY_RULES='{"interaction.requested": ["ntfy"]}'``.
+    notify_rules: dict[str, list[str]] = {
+        "interaction.requested": ["log"],
+        "session.completed": ["log"],
+        "session.failed": ["log"],
+    }
+    #: Channel name -> channel config, e.g.
+    #: ``PRODEO_NOTIFY_CHANNELS='{"ntfy": {"topic": "my-agents"}}'``.
+    notify_channels: dict[str, dict[str, Any]] = {}
+    #: Public base URL of this server's dashboard, used for notification
+    #: click-throughs (e.g. ``https://prodeo.example.com``).
+    public_url: str = ""
+
     # Adapters
     #: Per-adapter config, keyed by adapter name. From the environment this is
     #: JSON, e.g. ``PRODEO_ADAPTERS='{"claude-code": {"idle_timeout_s": 600}}'``.

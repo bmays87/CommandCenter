@@ -16,8 +16,16 @@ from typing import Any
 import structlog
 
 from prodeo.adapters.context import AdapterContext, ReportFn
-from prodeo.adapters.interface import ADAPTER_API_VERSION, AgentAdapter, SessionRef
+from prodeo.adapters.interface import (
+    ADAPTER_API_VERSION,
+    AgentAdapter,
+    InteractionRef,
+    LaunchSpec,
+    SessionRef,
+)
 from prodeo.adapters.observations import (
+    InteractionClosedObservation,
+    InteractionObservation,
     Observation,
     OutputObservation,
     SessionObservation,
@@ -28,10 +36,23 @@ from prodeo.adapters.observations import (
     TurnPhase,
 )
 from prodeo.bus.interface import EventBus
-from prodeo.errors import IllegalTransitionError
+from prodeo.errors import (
+    AdapterOperationError,
+    CapabilityNotSupportedError,
+    IllegalTransitionError,
+    UnknownAdapterError,
+    UnknownSessionError,
+)
 from prodeo.events import new_event
 from prodeo.events import types as ev
-from prodeo.sessions import Session, SessionRegistry
+from prodeo.mediation import (
+    Answer,
+    Interaction,
+    InteractionKind,
+    InteractionRequest,
+    MediationService,
+)
+from prodeo.sessions import Session, SessionDescriptor, SessionRegistry
 from prodeo.sessions.state import END_STATES, SessionState
 
 _log = structlog.get_logger(__name__)
@@ -56,6 +77,7 @@ class AdapterManager:
         self,
         bus: EventBus,
         registry: SessionRegistry,
+        mediation: MediationService,
         *,
         data_dir: Path,
         node: str = "local",
@@ -64,6 +86,7 @@ class AdapterManager:
     ) -> None:
         self._bus = bus
         self._registry = registry
+        self._mediation = mediation
         self._data_dir = data_dir
         self._node = node
         self._adapter_config = adapter_config or {}
@@ -182,6 +205,89 @@ class AdapterManager:
             )
         self._started.clear()
 
+    # ------------------------------------------------------------- control
+
+    async def launch(self, adapter_name: str, spec: LaunchSpec) -> Session:
+        """Launch a new agent run, register its session, and start watching it."""
+        adapter = self._require_adapter(adapter_name)
+        self._require_capability("launch", adapter.capabilities.launch)
+        try:
+            ref = await adapter.launch(spec)
+        except Exception as exc:
+            raise await self._operation_failed(adapter_name, "launch", exc) from exc
+        session = await self._registry.upsert_discovered(
+            adapter_name,
+            SessionDescriptor(
+                native_id=ref.native_id,
+                title=spec.prompt[:80],
+                project=spec.project,
+                model=spec.model,
+                state=SessionState.STARTING,
+                metadata={"controlled": "true"},
+            ),
+        )
+        self._ensure_watch(adapter_name, adapter, ref.native_id, session.id, session.state)
+        return session
+
+    async def terminate(self, session_id: str) -> None:
+        """Terminate a session through its owning adapter."""
+        session, adapter = self._require_session(session_id)
+        self._require_capability("terminate", adapter.capabilities.terminate)
+        try:
+            await adapter.terminate(self._session_ref(session))
+        except Exception as exc:
+            raise await self._operation_failed(
+                session.adapter, "terminate", exc, session_id=session.id
+            ) from exc
+
+    async def send_prompt(self, session_id: str, prompt: str) -> None:
+        """Send a follow-up prompt into a session through its owning adapter."""
+        session, adapter = self._require_session(session_id)
+        self._require_capability("send_prompt", adapter.capabilities.send_prompts)
+        try:
+            await adapter.send_prompt(self._session_ref(session), prompt)
+        except Exception as exc:
+            raise await self._operation_failed(
+                session.adapter, "send_prompt", exc, session_id=session.id
+            ) from exc
+
+    def _require_adapter(self, name: str) -> AgentAdapter:
+        adapter = self._adapters.get(name)
+        if adapter is None or name not in self._started:
+            raise UnknownAdapterError(name)
+        return adapter
+
+    def _require_session(self, session_id: str) -> tuple[Session, AgentAdapter]:
+        session = self._registry.get(session_id)
+        if session is None:
+            raise UnknownSessionError(session_id)
+        return session, self._require_adapter(session.adapter)
+
+    @staticmethod
+    def _require_capability(capability: str, declared: bool) -> None:
+        if not declared:
+            raise CapabilityNotSupportedError(capability)
+
+    @staticmethod
+    def _session_ref(session: Session) -> SessionRef:
+        return SessionRef(
+            adapter=session.adapter, native_id=session.native_id, session_id=session.id
+        )
+
+    async def _operation_failed(
+        self, adapter_name: str, operation: str, exc: Exception, *, session_id: str | None = None
+    ) -> AdapterOperationError:
+        """Report a failed control call; returns the error for the caller to raise.
+
+        ``CapabilityNotSupportedError`` passes through untranslated - it means
+        the declared capabilities and the implementation disagree.
+        """
+        if isinstance(exc, CapabilityNotSupportedError):
+            raise exc
+        _log.exception("adapter.control_failed", adapter=adapter_name, operation=operation)
+        await self._error(adapter_name, f"{operation}_failed", str(exc), session_id=session_id)
+        return AdapterOperationError(f"{operation} failed: {exc}")
+
     # ----------------------------------------------------------- discovery
 
     async def _discovery_loop(self) -> None:
@@ -279,6 +385,12 @@ class AdapterManager:
             return
 
         resolved = self._resolve(name, obs.native_id)
+        if resolved is None and isinstance(obs, InteractionObservation):
+            # A freshly launched session may report a permission request in
+            # the narrow window before launch() registers it; retry once
+            # rather than dropping an interaction a human must see.
+            await asyncio.sleep(0.5)
+            resolved = self._resolve(name, obs.native_id)
         if resolved is None:
             await self._error(name, "unknown_session", obs.native_id)
             return
@@ -337,6 +449,75 @@ class AdapterManager:
                 )
             )
             self._registry.touch(session.id, obs.at)
+        elif isinstance(obs, InteractionObservation):
+            await self._open_interaction(name, session, obs)
+            self._registry.touch(session.id, obs.at)
+        elif isinstance(obs, InteractionClosedObservation):
+            await self._mediation.cancel_native(
+                name, obs.interaction_native_id, reason=obs.reason or "closed_by_agent"
+            )
+            with contextlib.suppress(IllegalTransitionError):
+                await self._registry.observe_state(
+                    session.id, SessionState.RUNNING, reason="interaction_closed"
+                )
+
+    async def _open_interaction(
+        self, name: str, session: Session, obs: InteractionObservation
+    ) -> None:
+        """Open a mediated interaction and park the session on the human.
+
+        The deliver closure is the answer's route back: mediation calls it with
+        the winning answer; it invokes the adapter's ``respond()`` and returns
+        the session to ``running``. Its failures are contained here as
+        ``adapter.error`` - never propagated into mediation.
+        """
+        adapter = self._adapters[name]
+        answerable = (
+            adapter.capabilities.respond_to_permissions
+            if obs.kind is InteractionKind.PERMISSION
+            else adapter.capabilities.answer_questions
+        )
+        if not answerable:
+            await self._error(
+                name, "interaction_capability_missing", obs.kind, session_id=session.id
+            )
+            return
+
+        async def deliver(interaction: Interaction, answer: Answer) -> None:
+            ref = InteractionRef(
+                adapter=name,
+                session_native_id=obs.native_id,
+                interaction_id=interaction.id,
+                native_id=obs.interaction_native_id,
+            )
+            try:
+                await adapter.respond(ref, answer)
+            except Exception as exc:
+                _log.exception("adapter.respond_failed", adapter=name)
+                await self._error(name, "respond_failed", str(exc), session_id=session.id)
+                return
+            with contextlib.suppress(IllegalTransitionError):
+                await self._registry.observe_state(
+                    session.id, SessionState.RUNNING, reason="interaction_resolved"
+                )
+
+        await self._mediation.open(
+            InteractionRequest(
+                session_id=session.id,
+                adapter=name,
+                native_id=obs.interaction_native_id,
+                kind=obs.kind,
+                title=obs.title,
+                body=obs.body,
+                options=obs.options,
+                timeout_s=obs.timeout_s,
+            ),
+            deliver,
+        )
+        with contextlib.suppress(IllegalTransitionError):
+            await self._registry.observe_state(
+                session.id, SessionState.WAITING_ON_USER, reason="interaction_requested"
+            )
 
     def _resolve(self, name: str, native_id: str) -> Session | None:
         return self._registry.resolve(name, native_id)

@@ -1,8 +1,11 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { api, getToken, setToken, UnauthorizedError } from "./api/client";
+import { useLiveEvents } from "./live";
+import { EventsView } from "./views/EventsView";
 import { FleetView } from "./views/FleetView";
+import { InboxView } from "./views/InboxView";
 import { SessionView } from "./views/SessionView";
 
 const queryClient = new QueryClient({
@@ -55,6 +58,25 @@ function TokenGate({ onDone }: { onDone: () => void }) {
   );
 }
 
+function InboxLink({ active }: { active: boolean }) {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["interactions"],
+    queryFn: () => api.interactions(),
+    refetchInterval: 15_000,
+  });
+  useLiveEvents("interaction.*", () => {
+    void queryClient.invalidateQueries({ queryKey: ["interactions"] });
+  });
+  const pending = data?.pending ?? 0;
+  return (
+    <a href="#/inbox" className={`nav-link ${active ? "nav-active" : ""}`}>
+      Inbox
+      {pending > 0 ? <span className="badge-count">{pending}</span> : null}
+    </a>
+  );
+}
+
 function Shell() {
   const route = useHashRoute();
   const [authed, setAuthed] = useState(true); // optimistic; flips on first 401
@@ -77,17 +99,36 @@ function Shell() {
   }
 
   const sessionMatch = /^#\/session\/(.+)$/.exec(route);
+  const isInbox = route === "#/inbox";
+  const isEvents = route === "#/events";
+  const view = sessionMatch?.[1] ? (
+    <SessionView id={sessionMatch[1]} />
+  ) : isInbox ? (
+    <InboxView />
+  ) : isEvents ? (
+    <EventsView />
+  ) : (
+    <FleetView />
+  );
   return (
     <div className="shell">
       <nav className="topbar">
         <a href="#/" className="brand">
           ⌘ Prodeo
         </a>
+        <a
+          href="#/"
+          className={`nav-link ${!sessionMatch && !isInbox && !isEvents ? "nav-active" : ""}`}
+        >
+          Fleet
+        </a>
+        <InboxLink active={isInbox} />
+        <a href="#/events" className={`nav-link ${isEvents ? "nav-active" : ""}`}>
+          Events
+        </a>
         <span className="topbar-note">command center</span>
       </nav>
-      <main>
-        {sessionMatch?.[1] ? <SessionView id={sessionMatch[1]} /> : <FleetView />}
-      </main>
+      <main>{view}</main>
     </div>
   );
 }

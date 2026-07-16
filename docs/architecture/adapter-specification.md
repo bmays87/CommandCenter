@@ -40,6 +40,24 @@ class AgentAdapter(Protocol):
     async def send_prompt(self, session: SessionRef, prompt: str) -> None: ...
 ```
 
+`Answer` comes from `prodeo.mediation` (a permission's `allow`/`deny` plus
+optional edited tool input, or a question's text); `InteractionRef` carries the
+adapter name, the session's native id, the Command-Center interaction id, and
+the adapter-native interaction id (e.g. a `tool_use_id`). `LaunchSpec` carries
+`project` (working directory), `prompt`, `model`, `permission_mode`, and an
+adapter-specific `options` dict.
+
+**Adapter API v2** (Phase 2) added `respond()` to the Protocol; adapters built
+against v1 must rebuild — the manager refuses version mismatches at load time.
+`ObserveOnlyAdapter` gives every control method a refusing default, so
+observe-only adapters need no changes beyond re-releasing against v2.
+
+Blocked agents surface through observations, not control calls: an adapter
+reports `InteractionObservation` (kind `permission` or `question`) when its
+agent is waiting on a human, and `InteractionClosedObservation` when the agent
+stopped waiting on its own (e.g. answered in the terminal). The manager opens a
+mediated interaction for the former; the answer arrives via `respond()`.
+
 ```python
 class AdapterCapabilities(BaseModel):
     observe: bool = True          # always true
