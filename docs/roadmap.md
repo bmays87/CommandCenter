@@ -34,6 +34,12 @@ observability of their session formats); daily-summary plugin (Ollama); retentio
 policies and event archiving.
 **Exit:** two different vendors' agents supervised side by side; a scheduled agent
 run happens unattended and is summarized.
+*Shipped* with deliberate deviations: Aider + Codex CLI chosen, both
+observe-only (ADR-0009; OpenHands deferred); the scheduler is a core service,
+not a plugin kind (no substitution demand yet); the formal Plugin Host landed
+with `adapter`/`notifier`/`summarizer` kinds and the packaging guide; the
+daily summary is a core service whose *prose* comes from the optional
+`prodeo-summarizer-ollama` plugin — the digest works without it.
 
 ## Phase 4 — Voice
 **Mjölnir** (`prodeo-mjolnir`) voice client: OpenWakeWord + STT plugins

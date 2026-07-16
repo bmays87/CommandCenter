@@ -1,6 +1,6 @@
 [project]
 name = "prodeo-adapter-claude-code"
-version = "0.1.0"
+version = "0.3.0"
 description = "Prodeo Command Center adapter for Anthropic's Claude Code (observe + historical)"
 readme = "README.md"
 license = "Apache-2.0"
@@ -8,7 +8,7 @@ requires-python = ">=3.12"
 dependencies = ["prodeo", "claude-agent-sdk>=0.1"]
 
 [project.entry-points."prodeo.plugins"]
-claude-code = "prodeo_adapter_claude_code:create_adapter"
+claude-code = "prodeo_adapter_claude_code:manifest"
 
 [build-system]
 requires = ["hatchling"]

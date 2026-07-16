@@ -1,0 +1,15 @@
+{"timestamp":"2026-07-15T09:12:44.100Z","type":"session_meta","payload":{"id":"0198b1a2-aaaa-bbbb-cccc-d1e2f3a4b5c6","timestamp":"2026-07-15T09:12:44.100Z","cwd":"/home/me/src/app","originator":"codex_cli_rs","cli_version":"0.13.0","instructions":null,"git":{"commit_hash":"abc123","branch":"main","repository_url":"https://example.com/app.git"}}}
+{"timestamp":"2026-07-15T09:12:44.200Z","type":"turn_context","payload":{"cwd":"/home/me/src/app","approval_policy":"on-request","sandbox_policy":{"mode":"workspace-write"},"model":"gpt-5-codex","summary":"auto"}}
+{"timestamp":"2026-07-15T09:12:44.300Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>\n<cwd>/home/me/src/app</cwd>\n</environment_context>"}]}}
+{"timestamp":"2026-07-15T09:12:45.000Z","type":"event_msg","payload":{"type":"task_started","model_context_window":272000}}
+{"timestamp":"2026-07-15T09:12:45.100Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"fix the flaky websocket test"}]}}
+{"timestamp":"2026-07-15T09:12:47.000Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"Looking at the test."}],"content":[]}}
+{"timestamp":"2026-07-15T09:12:48.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":[\"pytest\",\"-k\",\"websocket\"]}","call_id":"call_1"}}
+{"timestamp":"2026-07-15T09:12:52.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_1","output":"{\"output\":\"1 failed, 3 passed\",\"metadata\":{\"exit_code\":1,\"duration_seconds\":3.4}}"}}
+{"timestamp":"2026-07-15T09:12:55.000Z","type":"response_item","payload":{"type":"function_call","name":"apply_patch","arguments":"{\"patch\":\"*** Update File: tests/test_ws.py\"}","call_id":"call_2"}}
+{"timestamp":"2026-07-15T09:12:56.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_2","output":"{\"output\":\"Done!\",\"metadata\":{\"exit_code\":0}}"}}
+{"timestamp":"2026-07-15T09:12:58.000Z","type":"event_msg","payload":{"type":"agent_message","message":"Fixed the race by awaiting the handshake."}}
+{"timestamp":"2026-07-15T09:12:58.100Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Fixed the race by awaiting the handshake before asserting."}]}}
+{"timestamp":"2026-07-15T09:12:59.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":9000,"output_tokens":400}}}}
+{"timestamp":"2026-07-15T09:12:59.500Z","type":"event_msg","payload":{"type":"task_complete","last_agent_message":"Fixed the race by awaiting the handshake before asserting."}}
+{"timestamp":"2026-07-15T09:13:00.000Z","type":"some_future_record","payload":{"mystery":true}}

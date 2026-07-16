@@ -1,0 +1,23 @@
+[project]
+name = "prodeo-adapter-skeleton"
+version = "0.1.0"
+description = "Starting point for new Prodeo Command Center agent adapters (copy me)"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = ["prodeo"]
+
+# This one line is what makes the package a plugin: the Plugin Host finds
+# every entry point in the "prodeo.plugins" group at startup.
+[project.entry-points."prodeo.plugins"]
+skeleton = "prodeo_adapter_skeleton:manifest"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/prodeo_adapter_skeleton"]
+
+[tool.uv.sources]
+prodeo = { workspace = true }

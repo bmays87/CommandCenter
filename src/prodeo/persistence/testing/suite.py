@@ -126,3 +126,19 @@ class EventStoreContractSuite:
         assert await store.query(EventQuery()) == []
         await store.append(new_event("tool.started"))
         assert await store.query(EventQuery(type_pattern="voice.*")) == []
+
+    @pytest.mark.asyncio
+    async def test_delete_removes_by_id_and_is_idempotent(self, store: EventStore) -> None:
+        events = [new_event("agent.output_appended", payload={"i": i}) for i in range(3)]
+        for e in events:
+            await store.append(e)
+
+        removed = await store.delete([events[0].id, events[2].id])
+        assert removed == 2
+        remaining = await store.query(EventQuery())
+        assert [e.id for e in remaining] == [events[1].id]
+
+        # Deleting the same (or unknown) ids again removes nothing.
+        assert await store.delete([events[0].id, "01UNKNOWNULID0000000000000"]) == 0
+        assert await store.delete([]) == 0
+        assert len(await store.query(EventQuery())) == 1

@@ -1,0 +1,21 @@
+[project]
+name = "prodeo-adapter-codex"
+version = "0.1.0"
+description = "Prodeo Command Center adapter for OpenAI Codex CLI (observe + historical via rollout files)"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = ["prodeo"]
+
+[project.entry-points."prodeo.plugins"]
+codex = "prodeo_adapter_codex:manifest"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/prodeo_adapter_codex"]
+
+[tool.uv.sources]
+prodeo = { workspace = true }

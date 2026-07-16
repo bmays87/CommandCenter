@@ -13,6 +13,7 @@ from prodeo.api import create_app
 from prodeo.bus import InProcessEventBus
 from prodeo.mediation import MediationService
 from prodeo.persistence import SqliteEventStore
+from prodeo.scheduler import SchedulerService
 from prodeo.sessions import SessionRegistry
 
 
@@ -21,12 +22,14 @@ def main() -> None:
     bus = InProcessEventBus()
     registry = SessionRegistry(bus)
     mediation = MediationService(bus)
+    manager = AdapterManager(bus, registry, mediation, data_dir=Path("unused"))
     app = create_app(
         registry=registry,
         store=SqliteEventStore(Path("unused.db")),  # never opened; schema only
         bus=bus,
         mediation=mediation,
-        manager=AdapterManager(bus, registry, mediation, data_dir=Path("unused")),
+        manager=manager,
+        scheduler=SchedulerService(bus, manager, node="schema"),
         node="schema",
         version=__version__,
     )

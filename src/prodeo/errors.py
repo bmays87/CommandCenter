@@ -31,6 +31,14 @@ class AdapterOperationError(ProdeoError):
     """A control operation failed inside the adapter (contained and reported)."""
 
 
+class UnknownScheduleError(ProdeoError):
+    """An operation referenced a schedule the scheduler does not know."""
+
+
+class InvalidScheduleError(ProdeoError):
+    """A schedule definition was rejected (unparsable or never-firing cron)."""
+
+
 class UnknownInteractionError(ProdeoError):
     """An operation referenced an interaction the mediation service does not know."""
 

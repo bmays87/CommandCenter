@@ -30,6 +30,7 @@ from prodeo.mediation import (
     MediationService,
 )
 from prodeo.persistence import EventRecorder, SqliteEventStore
+from prodeo.scheduler import SchedulerService
 from prodeo.sessions import SessionDescriptor, SessionRegistry, SessionState
 
 TOKEN = "secret-token"
@@ -84,12 +85,14 @@ class Env:
             self.bus, self.registry, self.mediation, data_dir=tmp_path, discovery_interval=0
         )
         self.manager.add(self.adapter)
+        self.scheduler = SchedulerService(self.bus, self.manager, node="test-node")
         app = create_app(
             registry=self.registry,
             store=self.store,
             bus=self.bus,
             mediation=self.mediation,
             manager=self.manager,
+            scheduler=self.scheduler,
             node="test-node",
             version="0.0-test",
             api_token=TOKEN,
@@ -278,6 +281,36 @@ async def test_launch_terminate_prompt_roundtrip(env: Env) -> None:
 async def test_launch_unknown_adapter_is_400(env: Env) -> None:
     resp = await env.client.post("/api/sessions", json={"adapter": "ghost"})
     assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_schedule_crud_roundtrip(env: Env) -> None:
+    created = await env.client.post(
+        "/api/schedules",
+        json={"name": "nightly", "cron": "0 2 * * *", "adapter": "fake", "prompt": "tidy up"},
+    )
+    assert created.status_code == 201
+    schedule = created.json()
+    assert schedule["cron"] == "0 2 * * *"
+    assert schedule["spec"]["prompt"] == "tidy up"
+    assert schedule["next_run_at"] is not None
+
+    listing = (await env.client.get("/api/schedules")).json()
+    assert [s["id"] for s in listing["schedules"]] == [schedule["id"]]
+
+    deleted = await env.client.delete(f"/api/schedules/{schedule['id']}")
+    assert deleted.status_code == 204
+    assert (await env.client.get("/api/schedules")).json()["schedules"] == []
+    assert (await env.client.delete(f"/api/schedules/{schedule['id']}")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_schedule_invalid_cron_is_400(env: Env) -> None:
+    resp = await env.client.post(
+        "/api/schedules", json={"name": "x", "cron": "whenever", "adapter": "fake"}
+    )
+    assert resp.status_code == 400
+    assert "cron" in resp.json()["detail"]
 
 
 @pytest.mark.asyncio

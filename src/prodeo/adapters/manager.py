@@ -1,5 +1,5 @@
-"""AdapterManager: loads adapters, supervises their tasks, translates
-observations into domain events.
+"""AdapterManager: supervises adapters' tasks and translates observations
+into domain events (discovery of adapter *plugins* is the Plugin Host's job).
 
 Containment is the job here: an adapter exception must never take down the
 manager or corrupt the event stream. Every call into adapter code is guarded;
@@ -9,7 +9,6 @@ restarts with exponential backoff.
 
 import asyncio
 import contextlib
-from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +16,6 @@ import structlog
 
 from prodeo.adapters.context import AdapterContext, ReportFn
 from prodeo.adapters.interface import (
-    ADAPTER_API_VERSION,
     AgentAdapter,
     InteractionRef,
     LaunchSpec,
@@ -56,8 +54,6 @@ from prodeo.sessions import Session, SessionDescriptor, SessionRegistry
 from prodeo.sessions.state import END_STATES, SessionState
 
 _log = structlog.get_logger(__name__)
-
-PLUGIN_ENTRY_POINT_GROUP = "prodeo.plugins"
 
 #: Output payloads are capped so one giant transcript record cannot bloat the
 #: event log; the full text always remains in the agent's own files.
@@ -100,46 +96,8 @@ class AdapterManager:
     # ------------------------------------------------------------- loading
 
     def add(self, adapter: AgentAdapter) -> None:
-        """Register an adapter instance directly (tests, embedded use)."""
+        """Register an adapter instance (the Plugin Host, tests, embedded use)."""
         self._adapters[adapter.metadata.name] = adapter
-
-    async def load_entry_points(self) -> None:
-        """Discover adapter plugins via the ``prodeo.plugins`` entry point group.
-
-        Each entry point must resolve to a zero-argument factory returning an
-        :class:`AgentAdapter`. Incompatible or broken plugins are reported and
-        skipped - never fatal (ADR-0005).
-        """
-        for ep in entry_points(group=PLUGIN_ENTRY_POINT_GROUP):
-            try:
-                factory = ep.load()
-                adapter: AgentAdapter = factory()
-                declared = adapter.metadata.adapter_api_version
-                if declared != ADAPTER_API_VERSION:
-                    raise RuntimeError(
-                        f"adapter API version mismatch: plugin declares {declared}, "
-                        f"core provides {ADAPTER_API_VERSION}"
-                    )
-            except Exception as exc:
-                _log.exception("adapter.plugin_load_failed", entry_point=ep.name)
-                await self._bus.publish(
-                    new_event(
-                        ev.SYSTEM_PLUGIN_FAILED,
-                        node=self._node,
-                        source="adapter-manager",
-                        payload={"plugin": ep.name, "error": str(exc)},
-                    )
-                )
-                continue
-            self.add(adapter)
-            await self._bus.publish(
-                new_event(
-                    ev.SYSTEM_PLUGIN_LOADED,
-                    node=self._node,
-                    source="adapter-manager",
-                    payload={"plugin": ep.name, "kind": "adapter"},
-                )
-            )
 
     # ----------------------------------------------------------- lifecycle
 

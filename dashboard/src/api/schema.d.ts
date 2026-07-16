@@ -75,6 +75,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Schedules */
+        get: operations["list_schedules_api_schedules_get"];
+        put?: never;
+        /**
+         * Create Schedule
+         * @description Define a cron-style agent launch (400 for an invalid expression).
+         */
+        post: operations["create_schedule_api_schedules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schedules/{schedule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Schedule */
+        delete: operations["delete_schedule_api_schedules__schedule_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schedules/{schedule_id}/trigger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trigger Schedule
+         * @description Fire a schedule immediately, without waiting for its cron slot.
+         */
+        post: operations["trigger_schedule_api_schedules__schedule_id__trigger_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions": {
         parameters: {
             query?: never;
@@ -206,6 +264,42 @@ export interface components {
             updated_input?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * CreateScheduleRequest
+         * @description Define a cron-style agent launch (the launch fields mirror LaunchRequest).
+         */
+        CreateScheduleRequest: {
+            /** Adapter */
+            adapter: string;
+            /** Cron */
+            cron: string;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /** Name */
+            name: string;
+            /** Options */
+            options?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Permission Mode
+             * @default
+             */
+            permission_mode: string;
+            /**
+             * Project
+             * @default
+             */
+            project: string;
+            /**
+             * Prompt
+             * @default
+             */
+            prompt: string;
         };
         /**
          * Event
@@ -356,10 +450,74 @@ export interface components {
              */
             prompt: string;
         };
+        /**
+         * LaunchSpec
+         * @description How to start a new agent run (control adapters).
+         */
+        LaunchSpec: {
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /** Options */
+            options?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Permission Mode
+             * @default
+             */
+            permission_mode: string;
+            /**
+             * Project
+             * @default
+             */
+            project: string;
+            /**
+             * Prompt
+             * @default
+             */
+            prompt: string;
+        };
         /** PromptRequest */
         PromptRequest: {
             /** Prompt */
             prompt: string;
+        };
+        /**
+         * Schedule
+         * @description One cron-style agent launch definition.
+         *
+         *     Schedules are event-sourced: ``schedule.created`` carries the full model,
+         *     ``schedule.deleted`` removes it. ``last_triggered_at`` folds from
+         *     ``schedule.triggered``; ``next_run_at`` is recomputed at runtime and is
+         *     informational for API readers.
+         */
+        Schedule: {
+            /** Adapter */
+            adapter: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Cron */
+            cron: string;
+            /** Id */
+            id: string;
+            /** Last Triggered At */
+            last_triggered_at?: string | null;
+            /** Name */
+            name: string;
+            /** Next Run At */
+            next_run_at?: string | null;
+            spec: components["schemas"]["LaunchSpec"];
+        };
+        /** ScheduleListResponse */
+        ScheduleListResponse: {
+            /** Schedules */
+            schedules: components["schemas"]["Schedule"][];
         };
         /**
          * Session
@@ -548,6 +706,119 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Interaction"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_schedules_api_schedules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleListResponse"];
+                };
+            };
+        };
+    };
+    create_schedule_api_schedules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateScheduleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Schedule"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_schedule_api_schedules__schedule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trigger_schedule_api_schedules__schedule_id__trigger_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Schedule"];
                 };
             };
             /** @description Validation Error */

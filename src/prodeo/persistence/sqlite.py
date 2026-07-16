@@ -1,6 +1,7 @@
 """SQLite-backed EventStore (WAL mode, JSON payloads, ULID primary keys)."""
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 
 import aiosqlite
@@ -107,6 +108,20 @@ class SqliteEventStore:
                 if len(results) >= q.limit:
                     break
         return results
+
+    async def delete(self, ids: Sequence[str]) -> int:
+        if not ids:
+            return 0
+        db = self._conn()
+        removed = 0
+        # Chunked to stay under SQLite's bound-parameter limit.
+        for start in range(0, len(ids), 500):
+            chunk = list(ids[start : start + 500])
+            placeholders = ",".join("?" * len(chunk))
+            cursor = await db.execute(f"DELETE FROM events WHERE id IN ({placeholders})", chunk)
+            removed += cursor.rowcount
+        await db.commit()
+        return removed
 
     async def close(self) -> None:
         if self._db is not None:

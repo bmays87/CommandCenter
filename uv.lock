@@ -12,7 +12,11 @@ resolution-markers = [
 [manifest]
 members = [
     "prodeo",
+    "prodeo-adapter-aider",
     "prodeo-adapter-claude-code",
+    "prodeo-adapter-codex",
+    "prodeo-adapter-skeleton",
+    "prodeo-summarizer-ollama",
 ]
 
 [[package]]
@@ -583,7 +587,11 @@ dependencies = [
 dev = [
     { name = "httpx" },
     { name = "mypy" },
+    { name = "prodeo-adapter-aider" },
     { name = "prodeo-adapter-claude-code" },
+    { name = "prodeo-adapter-codex" },
+    { name = "prodeo-adapter-skeleton" },
+    { name = "prodeo-summarizer-ollama" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
@@ -606,15 +614,30 @@ requires-dist = [
 dev = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "mypy", specifier = ">=1.10" },
+    { name = "prodeo-adapter-aider", editable = "packages/prodeo-adapter-aider" },
     { name = "prodeo-adapter-claude-code", editable = "packages/prodeo-adapter-claude-code" },
+    { name = "prodeo-adapter-codex", editable = "packages/prodeo-adapter-codex" },
+    { name = "prodeo-adapter-skeleton", editable = "examples/adapter-skeleton" },
+    { name = "prodeo-summarizer-ollama", editable = "packages/prodeo-summarizer-ollama" },
     { name = "pytest", specifier = ">=8.2" },
     { name = "pytest-asyncio", specifier = ">=0.23" },
     { name = "ruff", specifier = ">=0.5" },
 ]
 
 [[package]]
-name = "prodeo-adapter-claude-code"
+name = "prodeo-adapter-aider"
 version = "0.1.0"
+source = { editable = "packages/prodeo-adapter-aider" }
+dependencies = [
+    { name = "prodeo" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "prodeo", editable = "." }]
+
+[[package]]
+name = "prodeo-adapter-claude-code"
+version = "0.3.0"
 source = { editable = "packages/prodeo-adapter-claude-code" }
 dependencies = [
     { name = "claude-agent-sdk" },
@@ -624,6 +647,43 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "claude-agent-sdk", specifier = ">=0.1" },
+    { name = "prodeo", editable = "." },
+]
+
+[[package]]
+name = "prodeo-adapter-codex"
+version = "0.1.0"
+source = { editable = "packages/prodeo-adapter-codex" }
+dependencies = [
+    { name = "prodeo" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "prodeo", editable = "." }]
+
+[[package]]
+name = "prodeo-adapter-skeleton"
+version = "0.1.0"
+source = { editable = "examples/adapter-skeleton" }
+dependencies = [
+    { name = "prodeo" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "prodeo", editable = "." }]
+
+[[package]]
+name = "prodeo-summarizer-ollama"
+version = "0.1.0"
+source = { editable = "packages/prodeo-summarizer-ollama" }
+dependencies = [
+    { name = "httpx" },
+    { name = "prodeo" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27" },
     { name = "prodeo", editable = "." },
 ]
 

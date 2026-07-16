@@ -25,14 +25,17 @@ from prodeo.errors import (
     AdapterOperationError,
     CapabilityNotSupportedError,
     InteractionAlreadyResolvedError,
+    InvalidScheduleError,
     ProdeoError,
     UnknownAdapterError,
     UnknownInteractionError,
+    UnknownScheduleError,
     UnknownSessionError,
 )
 from prodeo.events import Event
 from prodeo.mediation import Answer, Interaction, InteractionStatus, MediationService
 from prodeo.persistence.interface import EventQuery, EventStore
+from prodeo.scheduler import Schedule, SchedulerService
 from prodeo.sessions import Session, SessionRegistry
 
 _log = structlog.get_logger(__name__)
@@ -43,8 +46,10 @@ MAX_EVENT_LIMIT = 1000
 _ERROR_STATUS: dict[type[ProdeoError], int] = {
     UnknownSessionError: 404,
     UnknownInteractionError: 404,
+    UnknownScheduleError: 404,
     UnknownAdapterError: 400,
     CapabilityNotSupportedError: 400,
+    InvalidScheduleError: 400,
     InteractionAlreadyResolvedError: 409,
     AdapterOperationError: 502,
 }
@@ -93,6 +98,23 @@ class PromptRequest(BaseModel):
     prompt: str
 
 
+class ScheduleListResponse(BaseModel):
+    schedules: list[Schedule]
+
+
+class CreateScheduleRequest(BaseModel):
+    """Define a cron-style agent launch (the launch fields mirror LaunchRequest)."""
+
+    name: str
+    cron: str
+    adapter: str
+    project: str = ""
+    prompt: str = ""
+    model: str = ""
+    permission_mode: str = ""
+    options: dict[str, Any] = Field(default_factory=dict)
+
+
 def create_app(
     *,
     registry: SessionRegistry,
@@ -100,6 +122,7 @@ def create_app(
     bus: EventBus,
     mediation: MediationService,
     manager: AdapterManager,
+    scheduler: SchedulerService,
     node: str,
     version: str,
     api_token: str | None = None,
@@ -229,6 +252,39 @@ def create_app(
         if session is None:  # pragma: no cover - send_prompt already 404s first
             raise HTTPException(status_code=404, detail="unknown session")
         return session
+
+    @app.get("/api/schedules", response_model=ScheduleListResponse, dependencies=[auth])
+    async def list_schedules() -> ScheduleListResponse:
+        return ScheduleListResponse(schedules=scheduler.list_schedules())
+
+    @app.post("/api/schedules", response_model=Schedule, status_code=201, dependencies=[auth])
+    async def create_schedule(body: CreateScheduleRequest) -> Schedule:
+        """Define a cron-style agent launch (400 for an invalid expression)."""
+        return await scheduler.create(
+            name=body.name,
+            cron=body.cron,
+            adapter=body.adapter,
+            spec=LaunchSpec(
+                project=body.project,
+                prompt=body.prompt,
+                model=body.model,
+                permission_mode=body.permission_mode,
+                options=body.options,
+            ),
+        )
+
+    @app.delete("/api/schedules/{schedule_id}", status_code=204, dependencies=[auth])
+    async def delete_schedule(schedule_id: str) -> None:
+        await scheduler.delete(schedule_id)
+
+    @app.post(
+        "/api/schedules/{schedule_id}/trigger",
+        response_model=Schedule,
+        dependencies=[auth],
+    )
+    async def trigger_schedule(schedule_id: str) -> Schedule:
+        """Fire a schedule immediately, without waiting for its cron slot."""
+        return await scheduler.trigger_now(schedule_id)
 
     @app.websocket("/api/ws/events")
     async def event_stream(ws: WebSocket) -> None:

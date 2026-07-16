@@ -25,15 +25,19 @@ command-center/
 │       ├── adapters/            # AdapterManager, AdapterContext, testing kit
 │       ├── mediation/           # interactions (permissions/questions)
 │       ├── persistence/         # EventStore/StateStore interfaces + SQLite impl
-│       ├── plugins/             # Plugin Host
+│       ├── plugins/             # Plugin Host (manifests, entry-point loading)
 │       ├── notify/              # Notifier service + channel interface
-│       ├── scheduler/
+│       ├── scheduler/           # cron engine + Scheduler service
+│       ├── summary/             # daily digest service + Summarizer interface
 │       ├── api/                 # FastAPI app: REST + WebSocket
 │       ├── config.py            # Pydantic Settings
 │       └── server.py            # composition root (DI wiring lives here only)
 ├── packages/                    # first-party plugins, separately installable
 │   ├── prodeo-adapter-claude-code/
-│   └── prodeo-storage-mongodb/  # optional backend (phase 2+)
+│   ├── prodeo-adapter-aider/
+│   ├── prodeo-adapter-codex/
+│   ├── prodeo-summarizer-ollama/
+│   └── prodeo-storage-mongodb/  # optional backend (deferred)
 ├── dashboard/                   # React + TypeScript client
 ├── tests/                       # cross-package integration tests
 │   ├── integration/
@@ -42,9 +46,7 @@ command-center/
 │   ├── Dockerfile
 │   └── compose.yaml
 ├── examples/
-│   ├── minimal-config/
-│   ├── custom-notifier-plugin/
-│   └── adapter-skeleton/
+│   └── adapter-skeleton/        # copyable adapter starting point (workspace member)
 └── scripts/                     # dev-env bootstrap, release, codegen
 ```
 

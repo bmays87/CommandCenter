@@ -79,6 +79,55 @@
         "title": "AnswerRequest",
         "type": "object"
       },
+      "CreateScheduleRequest": {
+        "description": "Define a cron-style agent launch (the launch fields mirror LaunchRequest).",
+        "properties": {
+          "adapter": {
+            "title": "Adapter",
+            "type": "string"
+          },
+          "cron": {
+            "title": "Cron",
+            "type": "string"
+          },
+          "model": {
+            "default": "",
+            "title": "Model",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "options": {
+            "additionalProperties": true,
+            "title": "Options",
+            "type": "object"
+          },
+          "permission_mode": {
+            "default": "",
+            "title": "Permission Mode",
+            "type": "string"
+          },
+          "project": {
+            "default": "",
+            "title": "Project",
+            "type": "string"
+          },
+          "prompt": {
+            "default": "",
+            "title": "Prompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "cron",
+          "adapter"
+        ],
+        "title": "CreateScheduleRequest",
+        "type": "object"
+      },
       "Event": {
         "description": "Immutable envelope for a single event.\n\n``id`` is a ULID, so lexicographic order is chronological order - clients\nuse it as a cursor when reconciling after a disconnect.",
         "properties": {
@@ -384,6 +433,38 @@
         "title": "LaunchRequest",
         "type": "object"
       },
+      "LaunchSpec": {
+        "description": "How to start a new agent run (control adapters).",
+        "properties": {
+          "model": {
+            "default": "",
+            "title": "Model",
+            "type": "string"
+          },
+          "options": {
+            "additionalProperties": true,
+            "title": "Options",
+            "type": "object"
+          },
+          "permission_mode": {
+            "default": "",
+            "title": "Permission Mode",
+            "type": "string"
+          },
+          "project": {
+            "default": "",
+            "title": "Project",
+            "type": "string"
+          },
+          "prompt": {
+            "default": "",
+            "title": "Prompt",
+            "type": "string"
+          }
+        },
+        "title": "LaunchSpec",
+        "type": "object"
+      },
       "PromptRequest": {
         "properties": {
           "prompt": {
@@ -395,6 +476,85 @@
           "prompt"
         ],
         "title": "PromptRequest",
+        "type": "object"
+      },
+      "Schedule": {
+        "description": "One cron-style agent launch definition.\n\nSchedules are event-sourced: ``schedule.created`` carries the full model,\n``schedule.deleted`` removes it. ``last_triggered_at`` folds from\n``schedule.triggered``; ``next_run_at`` is recomputed at runtime and is\ninformational for API readers.",
+        "properties": {
+          "adapter": {
+            "title": "Adapter",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "cron": {
+            "title": "Cron",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_triggered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Triggered At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run At"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/LaunchSpec"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "cron",
+          "adapter",
+          "spec",
+          "created_at"
+        ],
+        "title": "Schedule",
+        "type": "object"
+      },
+      "ScheduleListResponse": {
+        "properties": {
+          "schedules": {
+            "items": {
+              "$ref": "#/components/schemas/Schedule"
+            },
+            "title": "Schedules",
+            "type": "array"
+          }
+        },
+        "required": [
+          "schedules"
+        ],
+        "title": "ScheduleListResponse",
         "type": "object"
       },
       "Session": {
@@ -799,6 +959,133 @@
           }
         },
         "summary": "Answer Interaction"
+      }
+    },
+    "/api/schedules": {
+      "get": {
+        "operationId": "list_schedules_api_schedules_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Schedules"
+      },
+      "post": {
+        "description": "Define a cron-style agent launch (400 for an invalid expression).",
+        "operationId": "create_schedule_api_schedules_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateScheduleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Schedule"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Schedule"
+      }
+    },
+    "/api/schedules/{schedule_id}": {
+      "delete": {
+        "operationId": "delete_schedule_api_schedules__schedule_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "title": "Schedule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Schedule"
+      }
+    },
+    "/api/schedules/{schedule_id}/trigger": {
+      "post": {
+        "description": "Fire a schedule immediately, without waiting for its cron slot.",
+        "operationId": "trigger_schedule_api_schedules__schedule_id__trigger_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "title": "Schedule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Schedule"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Trigger Schedule"
       }
     },
     "/api/sessions": {

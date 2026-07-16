@@ -11,6 +11,7 @@ SYSTEM_STARTED: Final = "system.started"
 SYSTEM_STOPPING: Final = "system.stopping"
 SYSTEM_PLUGIN_LOADED: Final = "system.plugin_loaded"
 SYSTEM_PLUGIN_FAILED: Final = "system.plugin_failed"
+SYSTEM_RETENTION_COMPLETED: Final = "system.retention_completed"
 
 # session lifecycle. ``session.state_changed`` is emitted for *every*
 # transition and is what state is rebuilt from; the specific lifecycle
@@ -44,6 +45,14 @@ INTERACTION_CANCELLED: Final = "interaction.cancelled"
 # notifications
 NOTIFICATION_SENT: Final = "notification.sent"
 NOTIFICATION_FAILED: Final = "notification.failed"
+
+# summaries (periodic activity digests)
+SUMMARY_GENERATED: Final = "summary.generated"
+
+# schedules (cron-style agent launches)
+SCHEDULE_CREATED: Final = "schedule.created"
+SCHEDULE_TRIGGERED: Final = "schedule.triggered"
+SCHEDULE_DELETED: Final = "schedule.deleted"
 
 # adapter lifecycle
 ADAPTER_LOADED: Final = "adapter.loaded"

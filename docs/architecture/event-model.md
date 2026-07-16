@@ -43,7 +43,8 @@ Rules:
 | `adapter` | `loaded`, `unloaded`, `error`, `discovery_completed` |
 | `notification` | `sent`, `failed` |
 | `schedule` | `created`, `triggered`, `deleted` |
-| `system` | `started`, `stopping`, `plugin_loaded`, `plugin_failed` |
+| `summary` *(phase 3)* | `generated` |
+| `system` | `started`, `stopping`, `plugin_loaded`, `plugin_failed`, `retention_completed` |
 | `voice` *(phase 4)* | `wake_word_detected`, `command_received`, `transcription_completed`, `speech_started`, `speech_finished` |
 
 The names in the project brief map as follows: `AgentStarted` → `session.started`,
@@ -85,6 +86,57 @@ The Notifier routes selected events to channels per `PRODEO_NOTIFY_RULES`
   contained: they produce this event, never an exception in the core.
 
 `notification.*` events are themselves never routed (loop guard).
+
+## Schedule Events (Phase 3)
+
+The Scheduler is the only writer of `schedule.*` events (`source: "scheduler"`)
+and rebuilds its catalogue from them on boot. Payloads (v1):
+
+- `schedule.created` — `{"schedule": {id, name, cron, adapter, spec,
+  created_at, ...}}` (full Schedule dump; `spec` is the LaunchSpec fired on
+  each trigger).
+- `schedule.deleted` — `{"schedule_id"}`.
+- `schedule.triggered` — `{"schedule_id", "name", "adapter"}` plus either
+  `"session_id"` (also in the envelope) when the launch succeeded or
+  `"error"` when it was contained. Runs missed while the server was down are
+  skipped, not backfilled — the next run is always computed from *now*.
+
+Cron expressions are standard 5-field (plus `@daily`-style aliases), evaluated
+in `PRODEO_SCHEDULER_TIMEZONE` (default: the server's local timezone).
+
+## Summary Events (Phase 3)
+
+The Summary Service publishes one `summary.generated` per scheduled digest run
+(`source: "summary"`; cron via `PRODEO_SUMMARY_CRON`, default daily at 18:00):
+
+- `summary.generated` — `{"period_start", "period_end", "stats": {counts},
+  "digest": <plain-text statistics>, "prose": <summarizer text or "">,
+  "summarizer": <plugin name or null>, "summarizer_error"?}`. The digest is
+  always produced; prose appears only when a `summarizer` plugin (e.g.
+  `prodeo-summarizer-ollama`) is installed, and its failures are contained
+  into `summarizer_error`, never into a missing digest.
+
+Route `summary.generated` to a notification channel to receive it.
+
+## Retention (Phase 3)
+
+Retention is opt-in via `PRODEO_RETENTION_RULES` (a list of
+`{"types": <pattern>, "max_age_days": N, "archive": true}` rules). Expired
+events are appended to monthly gzip JSONL archives
+(`<data_dir>/archive/events-YYYY-MM.jsonl.gz`, plain event envelopes) before
+deletion. Two safety rails:
+
+- **Rebuild-critical namespaces are never deleted** — `session.*`,
+  `schedule.*`, and `interaction.*` are how the registry, scheduler, and
+  mediation reconstruct state on boot; retention skips them regardless of the
+  rules. The log's bulk (`agent.*`, `tool.*`, `notification.*`) is what
+  expires.
+- Sessions finished longer than `PRODEO_RETENTION_ARCHIVE_SESSIONS_AFTER_DAYS`
+  ago transition to `archived` through the normal state machine.
+
+A pass that changed anything publishes `system.retention_completed` —
+`{"events_deleted", "events_archived", "sessions_archived"}`
+(`source: "retention"`).
 
 ## Session State Machine
 

@@ -46,6 +46,8 @@ from prodeo.sessions.state import SessionState
 from prodeo_adapter_claude_code.launcher import ClientFactory, SdkLauncher, sdk_available
 from prodeo_adapter_claude_code.parser import TranscriptParser
 
+VERSION = "0.3.0"
+
 _PEEK_BYTES = 64 * 1024  # how much of a transcript discovery reads for metadata
 _INTERACTION_BODY_CHARS = 4000  # tool input shown to the human, capped
 
@@ -62,7 +64,7 @@ class ClaudeCodeAdapter(ObserveOnlyAdapter):
     """Claude Code adapter: transcript observation + SDK control."""
 
     def __init__(self, client_factory: ClientFactory | None = None) -> None:
-        self.metadata = AdapterMetadata(name="claude-code", version="0.2.0")
+        self.metadata = AdapterMetadata(name="claude-code", version=VERSION)
         control = client_factory is not None or sdk_available()
         self.capabilities = AdapterCapabilities(
             observe=True,

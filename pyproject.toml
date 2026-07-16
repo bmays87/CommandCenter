@@ -29,13 +29,21 @@ dev = [
     "ruff>=0.5",
     "httpx>=0.27",
     "prodeo-adapter-claude-code",
+    "prodeo-summarizer-ollama",
+    "prodeo-adapter-skeleton",
+    "prodeo-adapter-aider",
+    "prodeo-adapter-codex",
 ]
 
 [tool.uv.workspace]
-members = ["packages/*"]
+members = ["packages/*", "examples/adapter-skeleton"]
 
 [tool.uv.sources]
 prodeo-adapter-claude-code = { workspace = true }
+prodeo-summarizer-ollama = { workspace = true }
+prodeo-adapter-skeleton = { workspace = true }
+prodeo-adapter-aider = { workspace = true }
+prodeo-adapter-codex = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
@@ -47,7 +55,15 @@ packages = ["src/prodeo"]
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-src = ["src", "tests", "packages/prodeo-adapter-claude-code/src"]
+src = [
+    "src",
+    "tests",
+    "packages/prodeo-adapter-claude-code/src",
+    "packages/prodeo-summarizer-ollama/src",
+    "packages/prodeo-adapter-aider/src",
+    "packages/prodeo-adapter-codex/src",
+    "examples/adapter-skeleton/src",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "TCH", "RUF"]
@@ -56,12 +72,19 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "TCH", "RUF"]
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
-mypy_path = "src:packages/prodeo-adapter-claude-code/src"
-packages = ["prodeo", "prodeo_adapter_claude_code"]
+mypy_path = "src:packages/prodeo-adapter-claude-code/src:packages/prodeo-summarizer-ollama/src:packages/prodeo-adapter-aider/src:packages/prodeo-adapter-codex/src:examples/adapter-skeleton/src"
+packages = [
+    "prodeo",
+    "prodeo_adapter_claude_code",
+    "prodeo_summarizer_ollama",
+    "prodeo_adapter_skeleton",
+    "prodeo_adapter_aider",
+    "prodeo_adapter_codex",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
-testpaths = ["src", "packages", "tests"]
+testpaths = ["src", "packages", "tests", "examples"]
 markers = ["integration: cross-component tests"]
 
 [tool.coverage.run]

@@ -39,6 +39,13 @@ def _format(event: Event, public_url: str) -> Notification:
             event_id=event.id,
             session_id=event.session_id,
         )
+    if event.type == ev.SUMMARY_GENERATED:
+        return Notification(
+            title="Daily summary",
+            body=str(payload.get("prose") or payload.get("digest") or "")[:2000],
+            url=f"{public_url}/#/events" if public_url else "",
+            event_id=event.id,
+        )
     if event.type in (ev.SESSION_COMPLETED, ev.SESSION_FAILED, ev.SESSION_STOPPED):
         outcome = event.type.split(".")[1]
         subject = str(payload.get("title") or payload.get("project") or event.session_id or "")
@@ -77,6 +84,10 @@ class Notifier:
         self._public_url = public_url
         self._task: asyncio.Task[None] | None = None
         self._sub: Subscription | None = None
+
+    def add_channel(self, name: str, channel: NotificationChannel) -> None:
+        """Register a plugin-provided channel (composition root, before start)."""
+        self._channels[name] = channel
 
     async def start(self) -> None:
         self._sub = self._bus.subscribe("*", name="notifier", policy=BackpressurePolicy.DROP_OLDEST)

@@ -9,10 +9,12 @@ Aider, or OpenHands — it manages them.
 
 ## Status
 
-**Phase 1 — Observe.** The core boots, the claude-code adapter watches Claude Code
-session transcripts, and the dashboard shows your fleet live. See the
-[roadmap](docs/roadmap.md) for what each phase delivers. Start with
-[docs/vision.md](docs/vision.md) and
+**Phase 3 — Orchestrate & Extend.** Claude Code, Aider, and Codex CLI sessions
+are supervised side by side; permission requests are answered from the
+dashboard or phone; the scheduler launches agent runs unattended on cron; a
+daily digest summarizes the fleet (prose via the optional Ollama summarizer
+plugin); retention archives old events. See the [roadmap](docs/roadmap.md) for
+what each phase delivers. Start with [docs/vision.md](docs/vision.md) and
 [docs/architecture/overview.md](docs/architecture/overview.md).
 
 ## Quickstart

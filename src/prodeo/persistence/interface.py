@@ -1,5 +1,6 @@
 """EventStore interface (ADR-0003: SQLite default, MongoDB optional plugin)."""
 
+from collections.abc import Sequence
 from typing import Literal, Protocol
 
 from pydantic import BaseModel
@@ -24,12 +25,21 @@ class EventQuery(BaseModel):
 
 
 class EventStore(Protocol):
-    """Append-only, ULID-ordered event log."""
+    """Append-only, ULID-ordered event log.
+
+    ``delete`` exists solely for retention (Phase 3): expired events are
+    archived and then removed by id. Nothing else may delete; the log stays
+    append-only for every other writer.
+    """
 
     async def open(self) -> None: ...
 
     async def append(self, event: Event) -> None: ...
 
     async def query(self, q: EventQuery) -> list[Event]: ...
+
+    async def delete(self, ids: Sequence[str]) -> int:
+        """Remove events by id (idempotent); returns how many were removed."""
+        ...
 
     async def close(self) -> None: ...
