@@ -1,8 +1,9 @@
-# Voice Pipeline (Phase 4)
+# Voice Pipeline: Mjölnir (Phase 4)
 
-Voice is a **client**, not a subsystem of the core. It runs as a separate process
-(`prodeo-voice`), possibly on different hardware (a Raspberry Pi satellite), and
-talks to the server over the same WebSocket + REST API as the dashboard.
+The voice client is named **Mjölnir**. Voice is a **client**, not a subsystem of
+the core. It runs as a separate process (`prodeo-mjolnir`), possibly on
+different hardware (a Raspberry Pi satellite), and talks to the server over the
+same WebSocket + REST API as the dashboard.
 
 ## Pipeline
 
@@ -18,6 +19,16 @@ Reference engines (all local, all replaceable behind interfaces):
 - **STT**: NVIDIA Parakeet (GPU) or faster-whisper (CPU fallback) — see note below
 - **TTS**: Piper
 - **Summaries** (optional): Ollama via the `summarizer` plugin
+
+### Wake word
+
+The default wake word is **"mjölnir", spoken with its proper Norse
+pronunciation** (approximately "MYOL-neer") — the client answers to its name.
+That requires a custom-trained OpenWakeWord model shipped with the client;
+until it lands, a stock pretrained model serves as the development fallback.
+The wake word is user-configurable: a `wake_word` setting selects any other
+OpenWakeWord model (stock or custom-trained), so nothing hard-codes the
+default.
 
 ### Note on Parakeet
 

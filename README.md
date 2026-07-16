@@ -38,7 +38,7 @@ stream at `/api/ws/events`; interactive docs at `/docs`.
 | [Event Model](docs/architecture/event-model.md) | Event taxonomy, schema, versioning |
 | [Adapter Specification](docs/architecture/adapter-specification.md) | How agents plug in |
 | [Plugin System](docs/architecture/plugin-system.md) | Extensibility mechanism |
-| [Voice Pipeline](docs/architecture/voice-pipeline.md) | Voice as a client (future) |
+| [Voice Pipeline](docs/architecture/voice-pipeline.md) | Mjölnir, the voice client (future) |
 | [Dashboard Architecture](docs/architecture/dashboard.md) | Web UI design |
 | [Repository Layout](docs/architecture/repository-layout.md) | Where code lives |
 | [Coding Standards](docs/development/coding-standards.md) | How we write code |

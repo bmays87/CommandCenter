@@ -8,7 +8,7 @@ any number of external clients that consume its API.
 
 ```
 ┌────────────────────────────  Clients  ────────────────────────────┐
-│  Web Dashboard   Voice Client   Mobile   CLI   Automation/Webhooks │
+│  Web Dashboard  Mjölnir (voice)  Mobile  CLI  Automation/Webhooks │
 └──────────────┬───────────────────────────────────────┬────────────┘
                │ REST (commands, queries)              │ WebSocket / SSE (event stream)
 ┌──────────────▼───────────────────────────────────────▼────────────┐
@@ -65,9 +65,9 @@ kind (adapters, notification channels, STT/TTS engines, storage backends).
 
 - The server is a single asyncio process. CPU-heavy or crash-prone work (audio
   inference, subprocess-wrangling adapters) runs in subprocesses or executors.
-- The voice client is a **separate process** (potentially a separate machine) that
-  talks to the server over the same WebSocket/REST API as any other client. Audio
-  never enters the core.
+- The voice client (Mjölnir) is a **separate process** (potentially a separate
+  machine) that talks to the server over the same WebSocket/REST API as any
+  other client. Audio never enters the core.
 
 ## Deferred by Design (with seams in place)
 

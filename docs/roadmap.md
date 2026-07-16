@@ -36,9 +36,11 @@ policies and event archiving.
 run happens unattended and is summarized.
 
 ## Phase 4 — Voice
-`prodeo-voice` client: OpenWakeWord + STT plugins (faster-whisper default,
-Parakeet optional) + Piper TTS; deterministic intent router; attention-aware
-notification routing; satellite deployment docs (Pi).
+**Mjölnir** (`prodeo-mjolnir`) voice client: OpenWakeWord + STT plugins
+(faster-whisper default, Parakeet optional) + Piper TTS; wake word defaults to
+the proper pronunciation of "mjölnir" and is user-configurable; deterministic
+intent router; attention-aware notification routing; satellite deployment
+docs (Pi).
 **Exit:** the vision.md morning scenario works end to end, offline.
 
 ## Phase 5 — Many Machines
