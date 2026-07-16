@@ -44,6 +44,36 @@ overnight", "approve the permission for <session>", "stop <session>". An LLM-bas
 intent router is a plugin upgrade, not a prerequisite — deterministic intents keep
 latency low and behavior predictable, and they work fully offline.
 
+## Persona
+
+Mjölnir has a configurable persona, designed in from day one rather than
+bolted on. Personality lives in four independently swappable places, ordered
+from free to optional:
+
+1. **Address/honorific config.** Every response template carries a persona
+   slot; `honorific: "sir"` (or "ma'am", a name, or empty) is interpolated by
+   the Response Composer. Pure config.
+2. **Persona template packs.** The Response Composer's phrasing is a template
+   set, not hard-coded strings: the default pack is neutral ("Session
+   terminated."), and packs can restyle it ("As you wish, sir. The session has
+   been terminated."). Packs are deterministic text — they keep v1's offline
+   guarantee and latency budget untouched.
+3. **Voice selection.** The speaking voice is the TTS plugin's config; Piper's
+   stock catalogue already covers the calm-British-AI register
+   (`en_GB-alan`, `en_GB-northern_english_male`, ...). More expressive engines
+   (XTTS-class) arrive as separate `tts` plugin packages with their own heavy
+   dependencies — the same isolation rule as Parakeet above.
+4. **Optional LLM persona layer** (plugin). A rephraser that renders
+   *non-time-critical* responses in persona — the morning briefing, daily
+   summaries — via the same local-model path as the `summarizer` plugin. It is
+   never in the loop for interaction confirmations ("approved", "stopped"):
+   those stay deterministic templates, because a permission answer must be
+   fast, predictable, and impossible to garble.
+
+**Boundary:** persona voices must be original, stock, or licensed. Cloning a
+real person's voice without their consent (an actor, a colleague) is out of
+scope for this project — not a plugin opportunity.
+
 ## Interaction Flow Example
 
 1. Agent asks a question → adapter reports → `interaction.requested` on the bus.
