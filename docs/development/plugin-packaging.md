@@ -46,6 +46,17 @@ and are skipped; a broken plugin never prevents the server from booting.
 | `adapter` | `AgentAdapter` | `factory()` — zero-arg | `PRODEO_ADAPTERS['<name>']`, delivered via `AdapterContext.config` at `start()` |
 | `notifier` | `NotificationChannel` | `factory(config)` | `PRODEO_NOTIFY_CHANNELS['<name>']` |
 | `summarizer` | `Summarizer` | `factory(config)` | `PRODEO_PLUGINS['<name>']` |
+| `wakeword` | `WakeWordDetector` | `factory(config)` | `MJOLNIR_ENGINES['<name>']` |
+| `stt` | `SpeechToText` | `factory(config)` | `MJOLNIR_ENGINES['<name>']` |
+| `tts` | `TextToSpeech` | `factory(config)` | `MJOLNIR_ENGINES['<name>']` |
+
+**Voice engine kinds** (`wakeword`/`stt`/`tts`) use the same entry-point
+group and manifest contract but are hosted by the **voice client process**
+(`prodeo-mjolnir`), not the server — the server's Plugin Host recognizes and
+skips them. Their Protocols live in `prodeo_mjolnir.engines`; depend on
+`prodeo-mjolnir` instead of `prodeo`. Keep heavy model imports *lazy*
+(inside the factory/first call), so your manifest is importable everywhere —
+see the Parakeet note in voice-pipeline.md for why this rule exists.
 
 Adapters are the exception on config: their factories take no arguments
 because per-adapter config flows through the `AdapterContext`, like it always
@@ -108,6 +119,8 @@ error naming your plugin, not a `KeyError` at 3am.
 | adapter (full control) | `packages/prodeo-adapter-claude-code` | transcript watching + SDK control, versioned parser, offsets |
 | adapter (starting point) | `examples/adapter-skeleton` | the smallest honest adapter; copy this |
 | summarizer | `packages/prodeo-summarizer-ollama` | config schema, HTTP plugin, containment-friendly design |
+| voice engines | `packages/prodeo-stt-fasterwhisper` (also `-tts-piper`, `-wakeword-openwakeword`) | lazy heavy imports, `to_thread` inference, sys.modules-stubbed tests |
 
 Naming convention: `prodeo-adapter-*`, `prodeo-notifier-*`,
-`prodeo-summarizer-*` — the dashboard and docs assume it.
+`prodeo-summarizer-*`, `prodeo-wakeword-*`, `prodeo-stt-*`, `prodeo-tts-*` —
+the dashboard and docs assume it.

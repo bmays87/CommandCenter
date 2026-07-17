@@ -1,0 +1,23 @@
+[project]
+name = "prodeo-tts-piper"
+version = "0.1.0"
+description = "Mjölnir text-to-speech engine backed by Piper (local neural TTS)"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+# piper-tts (the piper1-gpl rewrite) is GPL-3.0; it stays isolated in this
+# optional plugin package and never becomes a core dependency.
+dependencies = ["prodeo-mjolnir", "piper-tts>=1.3"]
+
+[project.entry-points."prodeo.plugins"]
+piper = "prodeo_tts_piper:manifest"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/prodeo_tts_piper"]
+
+[tool.uv.sources]
+prodeo-mjolnir = { workspace = true }

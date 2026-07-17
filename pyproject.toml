@@ -33,6 +33,10 @@ dev = [
     "prodeo-adapter-skeleton",
     "prodeo-adapter-aider",
     "prodeo-adapter-codex",
+    "prodeo-mjolnir",
+    "prodeo-wakeword-openwakeword",
+    "prodeo-stt-fasterwhisper",
+    "prodeo-tts-piper",
 ]
 
 [tool.uv.workspace]
@@ -44,6 +48,10 @@ prodeo-summarizer-ollama = { workspace = true }
 prodeo-adapter-skeleton = { workspace = true }
 prodeo-adapter-aider = { workspace = true }
 prodeo-adapter-codex = { workspace = true }
+prodeo-mjolnir = { workspace = true }
+prodeo-wakeword-openwakeword = { workspace = true }
+prodeo-stt-fasterwhisper = { workspace = true }
+prodeo-tts-piper = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
@@ -62,6 +70,11 @@ src = [
     "packages/prodeo-summarizer-ollama/src",
     "packages/prodeo-adapter-aider/src",
     "packages/prodeo-adapter-codex/src",
+    "packages/prodeo-mjolnir/src",
+    "packages/prodeo-wakeword-openwakeword/src",
+    "packages/prodeo-stt-fasterwhisper/src",
+    "packages/prodeo-tts-piper/src",
+    "packages/prodeo-stt-parakeet/src",
     "examples/adapter-skeleton/src",
 ]
 
@@ -72,7 +85,7 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "TCH", "RUF"]
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
-mypy_path = "src:packages/prodeo-adapter-claude-code/src:packages/prodeo-summarizer-ollama/src:packages/prodeo-adapter-aider/src:packages/prodeo-adapter-codex/src:examples/adapter-skeleton/src"
+mypy_path = "src:packages/prodeo-adapter-claude-code/src:packages/prodeo-summarizer-ollama/src:packages/prodeo-adapter-aider/src:packages/prodeo-adapter-codex/src:packages/prodeo-mjolnir/src:packages/prodeo-wakeword-openwakeword/src:packages/prodeo-stt-fasterwhisper/src:packages/prodeo-tts-piper/src:packages/prodeo-stt-parakeet/src:examples/adapter-skeleton/src"
 packages = [
     "prodeo",
     "prodeo_adapter_claude_code",
@@ -80,7 +93,24 @@ packages = [
     "prodeo_adapter_skeleton",
     "prodeo_adapter_aider",
     "prodeo_adapter_codex",
+    "prodeo_mjolnir",
+    "prodeo_wakeword_openwakeword",
+    "prodeo_stt_fasterwhisper",
+    "prodeo_tts_piper",
+    "prodeo_stt_parakeet",
 ]
+
+# Voice engine libraries ship no type stubs (and Parakeet's NeMo/sounddevice
+# are not installed in CI at all); their imports are lazy and wrapped.
+[[tool.mypy.overrides]]
+module = [
+    "faster_whisper.*",
+    "openwakeword.*",
+    "piper.*",
+    "nemo.*",
+    "sounddevice",
+]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"

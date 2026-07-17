@@ -27,3 +27,13 @@ class NotificationChannel(Protocol):
     def name(self) -> str: ...
 
     async def send(self, notification: Notification) -> None: ...
+
+
+class AttentionSource(Protocol):
+    """What the Notifier needs to know about client attention.
+
+    Satisfied by ``prodeo.presence.PresenceTracker``; injected in the
+    composition root so the services never import each other.
+    """
+
+    def any_attentive(self) -> bool: ...

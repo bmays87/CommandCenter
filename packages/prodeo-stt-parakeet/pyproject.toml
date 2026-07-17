@@ -1,0 +1,24 @@
+[project]
+name = "prodeo-stt-parakeet"
+version = "0.1.0"
+description = "Mjölnir speech-to-text engine backed by NVIDIA Parakeet (GPU, NeMo)"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+# The NeMo chain is deliberately brutal (multi-GB, CUDA-bound); that is why
+# STT engines are separate plugin packages. This one is NOT part of the
+# workspace dev group - install it only where the GPU lives.
+dependencies = ["prodeo-mjolnir", "nemo-toolkit[asr]>=2.0"]
+
+[project.entry-points."prodeo.plugins"]
+parakeet = "prodeo_stt_parakeet:manifest"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/prodeo_stt_parakeet"]
+
+[tool.uv.sources]
+prodeo-mjolnir = { workspace = true }

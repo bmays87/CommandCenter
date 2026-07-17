@@ -48,6 +48,16 @@ the proper pronunciation of "mjölnir" and is user-configurable; deterministic
 intent router; attention-aware notification routing; satellite deployment
 docs (Pi).
 **Exit:** the vision.md morning scenario works end to end, offline.
+*Shipped* with deliberate deviations: engines are plugins in the shared
+`prodeo.plugins` group but hosted by the mjolnir process — the server host
+skips the voice kinds (ADR-0010); presence/attention is an ephemeral core
+service (`/api/presence`, never event-logged) feeding away-only channel
+suppression (`notification.suppressed`); persona shipped as template packs
+(`neutral`, `steward`) + honorific + optional summarizer-kind rephraser for
+briefings only; the custom "mjölnir" wake word model is still to be trained —
+a stock OpenWakeWord model is the loudly-logged fallback; the exit scenario
+is pinned by `tests/integration/test_voice_flow.py` (fake mic/engines, real
+server, real HTTP + WebSocket).
 
 ## Phase 5 — Many Machines
 `EventBus` implementation over NATS (or Redis Streams — ADR at the time); node

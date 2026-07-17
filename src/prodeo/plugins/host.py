@@ -16,6 +16,9 @@ Factory signatures by kind (see docs/development/plugin-packaging.md):
   ``AdapterContext`` at ``start()`` as it always has.
 - ``notifier`` / ``summarizer`` — called with the validated config
   (the ``config_model`` instance when declared, else the raw dict).
+- ``stt`` / ``tts`` / ``wakeword`` — same signature as above, but these are
+  voice engines hosted by the ``prodeo-mjolnir`` client process; this host
+  recognizes and skips them.
 
 For backward compatibility an entry point may still resolve to a bare
 zero-argument adapter factory (the Phase 1 contract); it is treated as an
@@ -44,7 +47,12 @@ PLUGIN_ENTRY_POINT_GROUP: Final = "prodeo.plugins"
 #: Bumped when the manifest/host contract changes incompatibly.
 PLUGIN_API_VERSION: Final = 1
 
-PluginKind = Literal["adapter", "notifier", "summarizer"]
+PluginKind = Literal["adapter", "notifier", "summarizer", "stt", "tts", "wakeword"]
+
+#: Voice engine kinds share the manifest contract and entry-point group but
+#: are hosted by the voice client process (``prodeo-mjolnir``), not the
+#: server - the server host skips them without loading (or failing) them.
+VOICE_KINDS: Final = frozenset({"stt", "tts", "wakeword"})
 
 
 class PluginManifest(BaseModel):
@@ -113,6 +121,11 @@ class PluginHost:
         for ep in self._entry_points():
             try:
                 manifest = self._resolve_manifest(ep)
+                if manifest.kind in VOICE_KINDS:
+                    # Voice engines belong to the mjolnir client process; a
+                    # co-installed engine is not an error, just not ours.
+                    _log.debug("plugins.skipped_voice_kind", plugin=manifest.name)
+                    continue
                 self._instantiate(manifest, loaded)
             except Exception as exc:
                 _log.exception("plugins.load_failed", entry_point=ep.name)

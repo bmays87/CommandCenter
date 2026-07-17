@@ -127,6 +127,84 @@ async def test_unknown_channel_name_becomes_failed_event(bus: InProcessEventBus)
     await notifier.stop()
 
 
+class StubAttention:
+    def __init__(self, attentive: bool) -> None:
+        self.attentive = attentive
+
+    def any_attentive(self) -> bool:
+        return self.attentive
+
+
+@pytest.mark.asyncio
+async def test_away_only_channel_suppressed_while_a_client_is_attentive(
+    bus: InProcessEventBus,
+) -> None:
+    push = RecordingChannel("push")
+    log = RecordingChannel("log")
+    attention = StubAttention(attentive=True)
+    notifier = Notifier(
+        bus,
+        {"push": push, "log": log},
+        {"interaction.requested": ["push", "log"]},
+        attention=attention,
+        away_only_channels=["push"],
+    )
+    await notifier.start()
+    probe = bus.subscribe("notification.*", name="probe")
+
+    await bus.publish(_interaction_requested())
+    await _settle()
+
+    # The attentive client already surfaces the event; only push is held back.
+    assert push.sent == []
+    assert len(log.sent) == 1
+    events = await _drain(probe)
+    assert {e.type for e in events} == {ev.NOTIFICATION_SUPPRESSED, ev.NOTIFICATION_SENT}
+    suppressed = next(e for e in events if e.type == ev.NOTIFICATION_SUPPRESSED)
+    assert suppressed.payload["channel"] == "push"
+    assert suppressed.payload["reason"] == "client attentive"
+    await notifier.stop()
+
+
+@pytest.mark.asyncio
+async def test_away_only_channel_fires_when_nobody_is_attentive(
+    bus: InProcessEventBus,
+) -> None:
+    push = RecordingChannel("push")
+    notifier = Notifier(
+        bus,
+        {"push": push},
+        {"interaction.requested": ["push"]},
+        attention=StubAttention(attentive=False),
+        away_only_channels=["push"],
+    )
+    await notifier.start()
+
+    await bus.publish(_interaction_requested())
+    await _settle()
+
+    assert len(push.sent) == 1
+    await notifier.stop()
+
+
+@pytest.mark.asyncio
+async def test_attention_ignored_without_away_only_channels(bus: InProcessEventBus) -> None:
+    push = RecordingChannel("push")
+    notifier = Notifier(
+        bus,
+        {"push": push},
+        {"interaction.requested": ["push"]},
+        attention=StubAttention(attentive=True),
+    )
+    await notifier.start()
+
+    await bus.publish(_interaction_requested())
+    await _settle()
+
+    assert len(push.sent) == 1
+    await notifier.stop()
+
+
 @pytest.mark.asyncio
 async def test_notification_events_are_never_routed_back(bus: InProcessEventBus) -> None:
     channel = RecordingChannel("all")

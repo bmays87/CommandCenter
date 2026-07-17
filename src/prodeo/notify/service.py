@@ -11,6 +11,7 @@ each routed channel. Sends are contained: a failing channel becomes a
 
 import asyncio
 import contextlib
+from collections.abc import Iterable
 from typing import Any
 
 import structlog
@@ -18,7 +19,7 @@ import structlog
 from prodeo.bus.interface import BackpressurePolicy, EventBus, Subscription, matches
 from prodeo.events import Event, new_event
 from prodeo.events import types as ev
-from prodeo.notify.interface import Notification, NotificationChannel
+from prodeo.notify.interface import AttentionSource, Notification, NotificationChannel
 
 _log = structlog.get_logger(__name__)
 
@@ -76,12 +77,16 @@ class Notifier:
         *,
         node: str = "local",
         public_url: str = "",
+        attention: AttentionSource | None = None,
+        away_only_channels: Iterable[str] = (),
     ) -> None:
         self._bus = bus
         self._channels = channels
         self._rules = rules
         self._node = node
         self._public_url = public_url
+        self._attention = attention
+        self._away_only = frozenset(away_only_channels)
         self._task: asyncio.Task[None] | None = None
         self._sub: Subscription | None = None
 
@@ -120,7 +125,19 @@ class Notifier:
         if not targets:
             return
         notification = _format(event, self._public_url)
+        # Attention-aware routing: away-only channels exist to reach a user
+        # who is *not* looking at a client (e.g. phone push). While any live
+        # client reports the user attentive, those sends are suppressed - the
+        # attentive client is already showing (or speaking) the event.
+        user_present = (
+            bool(self._away_only)
+            and self._attention is not None
+            and self._attention.any_attentive()
+        )
         for name in targets:
+            if user_present and name in self._away_only:
+                await self._suppressed(name, notification)
+                continue
             channel = self._channels.get(name)
             if channel is None:
                 await self._failed(name, notification, "unknown channel")
@@ -144,6 +161,22 @@ class Notifier:
                     },
                 )
             )
+
+    async def _suppressed(self, channel: str, notification: Notification) -> None:
+        await self._bus.publish(
+            new_event(
+                ev.NOTIFICATION_SUPPRESSED,
+                node=self._node,
+                source=_SOURCE,
+                session_id=notification.session_id,
+                payload={
+                    "channel": channel,
+                    "event_id": notification.event_id,
+                    "title": notification.title,
+                    "reason": "client attentive",
+                },
+            )
+        )
 
     async def _failed(self, channel: str, notification: Notification, error: str) -> None:
         await self._bus.publish(

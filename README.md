@@ -9,12 +9,17 @@ Aider, or OpenHands — it manages them.
 
 ## Status
 
-**Phase 3 — Orchestrate & Extend.** Claude Code, Aider, and Codex CLI sessions
-are supervised side by side; permission requests are answered from the
-dashboard or phone; the scheduler launches agent runs unattended on cron; a
-daily digest summarizes the fleet (prose via the optional Ollama summarizer
-plugin); retention archives old events. See the [roadmap](docs/roadmap.md) for
-what each phase delivers. Start with [docs/vision.md](docs/vision.md) and
+**Phase 4 — Voice.** Claude Code, Aider, and Codex CLI sessions are
+supervised side by side; permission requests are answered from the dashboard,
+phone, or **out loud** — the Mjölnir voice client
+([prodeo-mjolnir](packages/prodeo-mjolnir/)) wakes on its name, answers
+"what happened overnight?", and approves permissions by voice, fully offline
+(OpenWakeWord + faster-whisper + Piper as engine plugins; Raspberry Pi
+satellite runbook in [docs/deployment/satellite-pi.md](docs/deployment/satellite-pi.md)).
+The scheduler launches agent runs unattended on cron; a daily digest
+summarizes the fleet; retention archives old events. See the
+[roadmap](docs/roadmap.md) for what each phase delivers. Start with
+[docs/vision.md](docs/vision.md) and
 [docs/architecture/overview.md](docs/architecture/overview.md).
 
 ## Quickstart
@@ -40,7 +45,7 @@ stream at `/api/ws/events`; interactive docs at `/docs`.
 | [Event Model](docs/architecture/event-model.md) | Event taxonomy, schema, versioning |
 | [Adapter Specification](docs/architecture/adapter-specification.md) | How agents plug in |
 | [Plugin System](docs/architecture/plugin-system.md) | Extensibility mechanism |
-| [Voice Pipeline](docs/architecture/voice-pipeline.md) | Mjölnir, the voice client (future) |
+| [Voice Pipeline](docs/architecture/voice-pipeline.md) | Mjölnir, the voice client |
 | [Dashboard Architecture](docs/architecture/dashboard.md) | Web UI design |
 | [Repository Layout](docs/architecture/repository-layout.md) | Where code lives |
 | [Coding Standards](docs/development/coding-standards.md) | How we write code |

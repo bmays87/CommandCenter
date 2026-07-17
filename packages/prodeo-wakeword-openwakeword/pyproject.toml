@@ -1,0 +1,21 @@
+[project]
+name = "prodeo-wakeword-openwakeword"
+version = "0.1.0"
+description = "Mjölnir wake word engine backed by OpenWakeWord (local, CPU-friendly)"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = ["prodeo-mjolnir", "openwakeword>=0.4"]
+
+[project.entry-points."prodeo.plugins"]
+openwakeword = "prodeo_wakeword_openwakeword:manifest"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/prodeo_wakeword_openwakeword"]
+
+[tool.uv.sources]
+prodeo-mjolnir = { workspace = true }

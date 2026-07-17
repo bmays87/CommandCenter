@@ -217,3 +217,22 @@ async def test_broken_entry_point_and_wrong_product_are_contained(
         bus, [FakeEntryPoint("boom", explodes), FakeEntryPoint("wrong", wrong)]
     ).load()
     assert loaded.adapters == [] and loaded.channels == {} and loaded.summarizers == {}
+
+
+@pytest.mark.asyncio
+async def test_voice_engine_kinds_are_skipped_not_failed(bus: InProcessEventBus) -> None:
+    sub = bus.subscribe("system.*", name="probe")
+    engines = [
+        PluginManifest(name="fw", kind="stt", version="1.0", factory=lambda cfg: object()),
+        PluginManifest(name="piper", kind="tts", version="1.0", factory=lambda cfg: object()),
+        PluginManifest(name="oww", kind="wakeword", version="1.0", factory=lambda cfg: object()),
+    ]
+    eps = [FakeEntryPoint(m.name, m) for m in engines]
+    loaded = await _host(bus, [*eps, FakeEntryPoint("ok", _adapter_manifest())]).load()
+
+    # Voice engines are hosted by the mjolnir client process: the server host
+    # neither instantiates them nor reports them as failures.
+    assert loaded.adapters != [] and loaded.channels == {} and loaded.summarizers == {}
+    events = await _drain(sub)
+    assert [e.type for e in events] == [ev.SYSTEM_PLUGIN_LOADED]
+    assert events[0].payload["plugin"] == "minimal"

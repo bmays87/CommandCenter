@@ -45,6 +45,7 @@ INTERACTION_CANCELLED: Final = "interaction.cancelled"
 # notifications
 NOTIFICATION_SENT: Final = "notification.sent"
 NOTIFICATION_FAILED: Final = "notification.failed"
+NOTIFICATION_SUPPRESSED: Final = "notification.suppressed"
 
 # summaries (periodic activity digests)
 SUMMARY_GENERATED: Final = "summary.generated"
@@ -53,6 +54,14 @@ SUMMARY_GENERATED: Final = "summary.generated"
 SCHEDULE_CREATED: Final = "schedule.created"
 SCHEDULE_TRIGGERED: Final = "schedule.triggered"
 SCHEDULE_DELETED: Final = "schedule.deleted"
+
+# voice (phase 4). Emitted by voice clients (e.g. Mjölnir) through
+# ``POST /api/voice/events``; ``source`` is ``voice:<client_id>``.
+VOICE_WAKE_WORD_DETECTED: Final = "voice.wake_word_detected"
+VOICE_COMMAND_RECEIVED: Final = "voice.command_received"
+VOICE_TRANSCRIPTION_COMPLETED: Final = "voice.transcription_completed"
+VOICE_SPEECH_STARTED: Final = "voice.speech_started"
+VOICE_SPEECH_FINISHED: Final = "voice.speech_finished"
 
 # adapter lifecycle
 ADAPTER_LOADED: Final = "adapter.loaded"

@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     #: Public base URL of this server's dashboard, used for notification
     #: click-throughs (e.g. ``https://prodeo.example.com``).
     public_url: str = ""
+    #: Channels that exist to reach an *away* user (e.g. phone push via
+    #: ``ntfy``). While any client reports the user attentive (see
+    #: ``/api/presence``), sends to these channels are suppressed and logged
+    #: as ``notification.suppressed``. Empty = route everything always.
+    notify_away_only_channels: list[str] = []
 
     # Plugins
     #: Config for non-adapter, non-channel plugins (e.g. summarizers), keyed

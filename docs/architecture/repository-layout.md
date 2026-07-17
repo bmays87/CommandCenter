@@ -14,6 +14,7 @@ command-center/
 │   ├── goals-and-non-goals.md
 │   ├── architecture/            # this documentation set
 │   ├── development/
+│   ├── deployment/              # runbooks (Pi satellite, ...)
 │   ├── adr/                     # Architecture Decision Records
 │   ├── contributing.md
 │   └── roadmap.md
@@ -29,14 +30,20 @@ command-center/
 │       ├── notify/              # Notifier service + channel interface
 │       ├── scheduler/           # cron engine + Scheduler service
 │       ├── summary/             # daily digest service + Summarizer interface
+│       ├── presence/            # client presence/attention tracker
 │       ├── api/                 # FastAPI app: REST + WebSocket
 │       ├── config.py            # Pydantic Settings
 │       └── server.py            # composition root (DI wiring lives here only)
-├── packages/                    # first-party plugins, separately installable
+├── packages/                    # first-party plugins + clients, separately installable
 │   ├── prodeo-adapter-claude-code/
 │   ├── prodeo-adapter-aider/
 │   ├── prodeo-adapter-codex/
 │   ├── prodeo-summarizer-ollama/
+│   ├── prodeo-mjolnir/          # voice client (a client, not a subsystem)
+│   ├── prodeo-wakeword-openwakeword/  # voice engines: plugin kinds
+│   ├── prodeo-stt-fasterwhisper/      #   wakeword / stt / tts, hosted by
+│   ├── prodeo-tts-piper/              #   the mjolnir process
+│   ├── prodeo-stt-parakeet/     # GPU STT; not in the dev group (NeMo is multi-GB)
 │   └── prodeo-storage-mongodb/  # optional backend (deferred)
 ├── dashboard/                   # React + TypeScript client
 ├── tests/                       # cross-package integration tests

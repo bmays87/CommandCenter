@@ -5,6 +5,12 @@ the core. It runs as a separate process (`prodeo-mjolnir`), possibly on
 different hardware (a Raspberry Pi satellite), and talks to the server over the
 same WebSocket + REST API as the dashboard.
 
+*Shipped (phase 4).* `packages/prodeo-mjolnir` plus the engine plugins
+(`prodeo-wakeword-openwakeword`, `prodeo-stt-fasterwhisper`,
+`prodeo-tts-piper`, and `prodeo-stt-parakeet` for GPU boxes). Engines are
+plugins in the shared `prodeo.plugins` group, hosted by the mjolnir process
+(ADR-0010). Deployment runbook: `docs/deployment/satellite-pi.md`.
+
 ## Pipeline
 
 ```
@@ -82,6 +88,23 @@ scope for this project — not a plugin opportunity.
 3. User: "yes, approve it" → intent router → `POST /interactions/{id}/answer`.
 4. Mediation service resolves the interaction exactly once (a simultaneous dashboard
    click loses gracefully and is told so) → adapter delivers the answer.
+
+## Attention (how "the client the user is watching" works)
+
+A voice exchange marks the user *attentive* for `MJOLNIR_ATTENTIVE_WINDOW_S`
+(default 120 s). Two consumers act on that state:
+
+- **The client itself** speaks server notifications only while attentive
+  (`MJOLNIR_SPEAK_NOTIFICATIONS=attentive`, the default; `always`/`never`
+  override) — an interaction request is announced out loud to someone who
+  was just talking to the satellite, not to an empty kitchen.
+- **The server** hears about it through presence heartbeats
+  (`PUT /api/presence/{client_id}`, TTL-expired). Channels listed in
+  `PRODEO_NOTIFY_AWAY_ONLY_CHANNELS` (e.g. `ntfy` phone push) are suppressed
+  while *any* client is attentive, producing `notification.suppressed`
+  instead of a redundant buzz in the user's pocket.
+
+Presence is deliberately ephemeral — see the note in event-model.md.
 
 ## Latency Budget
 

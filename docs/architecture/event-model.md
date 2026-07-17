@@ -41,7 +41,7 @@ Rules:
 | `tool` | `started`, `finished`, `failed` |
 | `interaction` | `requested`, `answered`, `timed_out`, `cancelled` |
 | `adapter` | `loaded`, `unloaded`, `error`, `discovery_completed` |
-| `notification` | `sent`, `failed` |
+| `notification` | `sent`, `failed`, `suppressed` *(phase 4)* |
 | `schedule` | `created`, `triggered`, `deleted` |
 | `summary` *(phase 3)* | `generated` |
 | `system` | `started`, `stopping`, `plugin_loaded`, `plugin_failed`, `retention_completed` |
@@ -84,8 +84,36 @@ The Notifier routes selected events to channels per `PRODEO_NOTIFY_RULES`
   event that triggered the notification).
 - `notification.failed` — same fields plus `"error"`. Channel failures are
   contained: they produce this event, never an exception in the core.
+- `notification.suppressed` *(phase 4)* — same fields plus `"reason":
+  "client attentive"`. Channels listed in `PRODEO_NOTIFY_AWAY_ONLY_CHANNELS`
+  (e.g. phone push) exist to reach an *away* user; while any client reports
+  the user attentive via `/api/presence`, their sends are suppressed and
+  logged as this event instead — the attentive client is already showing (or
+  speaking) the underlying event.
 
 `notification.*` events are themselves never routed (loop guard).
+
+## Voice Events (Phase 4)
+
+Voice clients (the reference is Mjölnir, `prodeo-mjolnir`) report their side
+of each exchange through `POST /api/voice/events` — the only externally
+ingestible namespace; everything else in the log is written by core services
+and adapters. Envelope: `source` is `voice:<client_id>`, `node` is the
+satellite's machine name, and all events of one exchange share a
+`correlation_id`. Payloads (v1):
+
+- `voice.wake_word_detected` — `{"wake_word", "score"}`.
+- `voice.command_received` — `{"duration_s", "heard_speech"}` (the captured
+  utterance; `heard_speech` false means the user said nothing).
+- `voice.transcription_completed` — `{"text", "engine"}`.
+- `voice.speech_started` — `{"text", "engine"}` (about to speak `text`).
+- `voice.speech_finished` — `{"duration_s"}`.
+
+**Client presence is not in the event log.** Heartbeats
+(`PUT /api/presence/{client_id}`, TTL-expired, in-memory) are liveness
+signals, not durable facts — logging one per few seconds would drown the
+stream. Consumers query `GET /api/presence` (or the injected tracker) for
+"is anyone attentive right now".
 
 ## Schedule Events (Phase 3)
 

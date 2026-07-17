@@ -30,6 +30,7 @@ from prodeo.mediation import (
     MediationService,
 )
 from prodeo.persistence import EventRecorder, SqliteEventStore
+from prodeo.presence import PresenceTracker
 from prodeo.scheduler import SchedulerService
 from prodeo.sessions import SessionDescriptor, SessionRegistry, SessionState
 
@@ -86,6 +87,7 @@ class Env:
         )
         self.manager.add(self.adapter)
         self.scheduler = SchedulerService(self.bus, self.manager, node="test-node")
+        self.presence = PresenceTracker()
         app = create_app(
             registry=self.registry,
             store=self.store,
@@ -93,6 +95,7 @@ class Env:
             mediation=self.mediation,
             manager=self.manager,
             scheduler=self.scheduler,
+            presence=self.presence,
             node="test-node",
             version="0.0-test",
             api_token=TOKEN,
@@ -325,3 +328,72 @@ async def test_commands_require_auth(env: Env) -> None:
         )
     ).status_code == 401
     assert (await env.client.get("/api/interactions", headers=headers)).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_presence_report_list_and_forget(env: Env) -> None:
+    reported = await env.client.put(
+        "/api/presence/mjolnir",
+        json={"kind": "voice", "attentive": True, "node": "kitchen-pi", "ttl_s": 30},
+    )
+    assert reported.status_code == 200
+    assert reported.json()["attentive"] is True
+
+    listing = (await env.client.get("/api/presence")).json()
+    assert [c["client_id"] for c in listing["clients"]] == ["mjolnir"]
+    assert listing["clients"][0]["kind"] == "voice"
+    assert listing["any_attentive"] is True
+
+    assert (await env.client.delete("/api/presence/mjolnir")).status_code == 204
+    listing = (await env.client.get("/api/presence")).json()
+    assert listing["clients"] == []
+    assert listing["any_attentive"] is False
+    # forgetting an unknown client is fine (expiry races are expected)
+    assert (await env.client.delete("/api/presence/mjolnir")).status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_voice_event_ingest_lands_in_the_log(env: Env) -> None:
+    resp = await env.client.post(
+        "/api/voice/events",
+        json={
+            "type": "voice.transcription_completed",
+            "client_id": "mjolnir",
+            "node": "kitchen-pi",
+            "payload": {"text": "what happened overnight"},
+        },
+    )
+    assert resp.status_code == 201
+    event = resp.json()
+    assert event["source"] == "voice:mjolnir"
+    assert event["node"] == "kitchen-pi"
+
+    await env.recorder.stop()  # flush: recorder queue drained before stop returns
+    stored = (await env.client.get("/api/events", params={"type": "voice.*"})).json()
+    assert [e["id"] for e in stored["events"]] == [event["id"]]
+    assert stored["events"][0]["payload"]["text"] == "what happened overnight"
+
+
+@pytest.mark.asyncio
+async def test_voice_event_ingest_rejects_non_voice_types(env: Env) -> None:
+    for bad in ("session.completed", "voice.", "voicecommand"):
+        resp = await env.client.post(
+            "/api/voice/events", json={"type": bad, "client_id": "mjolnir"}
+        )
+        assert resp.status_code == 400, bad
+
+
+@pytest.mark.asyncio
+async def test_presence_and_voice_ingest_require_auth(env: Env) -> None:
+    headers = {"Authorization": ""}
+    assert (await env.client.get("/api/presence", headers=headers)).status_code == 401
+    assert (
+        await env.client.put("/api/presence/x", json={"kind": "voice"}, headers=headers)
+    ).status_code == 401
+    assert (
+        await env.client.post(
+            "/api/voice/events",
+            json={"type": "voice.speech_started", "client_id": "x"},
+            headers=headers,
+        )
+    ).status_code == 401

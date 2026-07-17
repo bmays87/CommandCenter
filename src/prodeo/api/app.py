@@ -32,9 +32,10 @@ from prodeo.errors import (
     UnknownScheduleError,
     UnknownSessionError,
 )
-from prodeo.events import Event
+from prodeo.events import Event, new_event
 from prodeo.mediation import Answer, Interaction, InteractionStatus, MediationService
 from prodeo.persistence.interface import EventQuery, EventStore
+from prodeo.presence import ClientPresence, PresenceTracker
 from prodeo.scheduler import Schedule, SchedulerService
 from prodeo.sessions import Session, SessionRegistry
 
@@ -102,6 +103,37 @@ class ScheduleListResponse(BaseModel):
     schedules: list[Schedule]
 
 
+class PresenceReport(BaseModel):
+    """One client heartbeat: 'I am here, and the user is/isn't engaged.'"""
+
+    kind: str = "client"
+    attentive: bool = False
+    node: str = ""
+    #: Seconds until this heartbeat expires; clients re-report well inside it.
+    ttl_s: float = Field(30.0, gt=0, le=3600)
+
+
+class PresenceListResponse(BaseModel):
+    clients: list[ClientPresence]
+    any_attentive: bool
+
+
+class VoiceEventRequest(BaseModel):
+    """A ``voice.*`` event reported by a voice client (e.g. Mjölnir).
+
+    Only the ``voice.`` namespace may be ingested; everything else in the log
+    is written by the core services and adapters themselves.
+    """
+
+    type: str
+    client_id: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    session_id: str | None = None
+    correlation_id: str | None = None
+    #: Originating machine (the satellite's node name); empty = this server's.
+    node: str = ""
+
+
 class CreateScheduleRequest(BaseModel):
     """Define a cron-style agent launch (the launch fields mirror LaunchRequest)."""
 
@@ -123,6 +155,7 @@ def create_app(
     mediation: MediationService,
     manager: AdapterManager,
     scheduler: SchedulerService,
+    presence: PresenceTracker,
     node: str,
     version: str,
     api_token: str | None = None,
@@ -285,6 +318,46 @@ def create_app(
     async def trigger_schedule(schedule_id: str) -> Schedule:
         """Fire a schedule immediately, without waiting for its cron slot."""
         return await scheduler.trigger_now(schedule_id)
+
+    @app.get("/api/presence", response_model=PresenceListResponse, dependencies=[auth])
+    async def list_presence() -> PresenceListResponse:
+        """Live clients and whether any of them holds the user's attention."""
+        return PresenceListResponse(
+            clients=presence.list_clients(),
+            any_attentive=presence.any_attentive(),
+        )
+
+    @app.put("/api/presence/{client_id}", response_model=ClientPresence, dependencies=[auth])
+    async def report_presence(client_id: str, body: PresenceReport) -> ClientPresence:
+        """Heartbeat: entries expire after ``ttl_s`` unless re-reported."""
+        return presence.report(
+            client_id,
+            kind=body.kind,
+            attentive=body.attentive,
+            ttl_s=body.ttl_s,
+            node=body.node,
+        )
+
+    @app.delete("/api/presence/{client_id}", status_code=204, dependencies=[auth])
+    async def forget_presence(client_id: str) -> None:
+        """Clean goodbye; missing clients are fine (expiry races are expected)."""
+        presence.forget(client_id)
+
+    @app.post("/api/voice/events", response_model=Event, status_code=201, dependencies=[auth])
+    async def ingest_voice_event(body: VoiceEventRequest) -> Event:
+        """Ingest one ``voice.*`` event from a voice client into the log."""
+        if not body.type.startswith("voice.") or body.type == "voice.":
+            raise HTTPException(status_code=400, detail="only voice.* events may be ingested")
+        event = new_event(
+            body.type,
+            node=body.node or node,
+            source=f"voice:{body.client_id}",
+            session_id=body.session_id,
+            correlation_id=body.correlation_id,
+            payload=body.payload,
+        )
+        await bus.publish(event)
+        return event
 
     @app.websocket("/api/ws/events")
     async def event_stream(ws: WebSocket) -> None:

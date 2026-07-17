@@ -26,6 +26,7 @@ from prodeo.notify import Notifier
 from prodeo.notify.channels import channels_from_config
 from prodeo.persistence import EventRecorder, RetentionService, SqliteEventStore
 from prodeo.plugins import PluginHost
+from prodeo.presence import PresenceTracker
 from prodeo.scheduler import SchedulerService
 from prodeo.sessions import SessionRegistry
 from prodeo.summary import SummaryService
@@ -72,12 +73,15 @@ class Server:
             interval_s=settings.retention_interval_s,
             node=settings.node_name,
         )
+        self.presence = PresenceTracker()
         self.notifier = Notifier(
             self.bus,
             channels_from_config(settings.notify_channels),
             settings.notify_rules,
             node=settings.node_name,
             public_url=settings.public_url,
+            attention=self.presence,
+            away_only_channels=settings.notify_away_only_channels,
         )
         self.plugins = PluginHost(
             self.bus,
@@ -102,6 +106,7 @@ class Server:
                 mediation=self.mediation,
                 manager=self.adapters,
                 scheduler=self.scheduler,
+                presence=self.presence,
                 node=settings.node_name,
                 version=__version__,
                 api_token=settings.api_token,

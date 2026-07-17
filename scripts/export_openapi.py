@@ -13,6 +13,7 @@ from prodeo.api import create_app
 from prodeo.bus import InProcessEventBus
 from prodeo.mediation import MediationService
 from prodeo.persistence import SqliteEventStore
+from prodeo.presence import PresenceTracker
 from prodeo.scheduler import SchedulerService
 from prodeo.sessions import SessionRegistry
 
@@ -30,6 +31,7 @@ def main() -> None:
         mediation=mediation,
         manager=manager,
         scheduler=SchedulerService(bus, manager, node="schema"),
+        presence=PresenceTracker(),
         node="schema",
         version=__version__,
     )

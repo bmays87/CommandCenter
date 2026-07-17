@@ -75,6 +75,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/presence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Presence
+         * @description Live clients and whether any of them holds the user's attention.
+         */
+        get: operations["list_presence_api_presence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/presence/{client_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Report Presence
+         * @description Heartbeat: entries expire after ``ttl_s`` unless re-reported.
+         */
+        put: operations["report_presence_api_presence__client_id__put"];
+        post?: never;
+        /**
+         * Forget Presence
+         * @description Clean goodbye; missing clients are fine (expiry races are expected).
+         */
+        delete: operations["forget_presence_api_presence__client_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/schedules": {
         parameters: {
             query?: never;
@@ -222,6 +266,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/voice/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ingest Voice Event
+         * @description Ingest one ``voice.*`` event from a voice client into the log.
+         */
+        post: operations["ingest_voice_event_api_voice_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -264,6 +328,33 @@ export interface components {
             updated_input?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * ClientPresence
+         * @description One client's latest heartbeat.
+         */
+        ClientPresence: {
+            /** Attentive */
+            attentive: boolean;
+            /** Client Id */
+            client_id: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Last Seen
+             * Format: date-time
+             */
+            last_seen: string;
+            /**
+             * Node
+             * @default
+             */
+            node: string;
         };
         /**
          * CreateScheduleRequest
@@ -480,6 +571,39 @@ export interface components {
              */
             prompt: string;
         };
+        /** PresenceListResponse */
+        PresenceListResponse: {
+            /** Any Attentive */
+            any_attentive: boolean;
+            /** Clients */
+            clients: components["schemas"]["ClientPresence"][];
+        };
+        /**
+         * PresenceReport
+         * @description One client heartbeat: 'I am here, and the user is/isn't engaged.'
+         */
+        PresenceReport: {
+            /**
+             * Attentive
+             * @default false
+             */
+            attentive: boolean;
+            /**
+             * Kind
+             * @default client
+             */
+            kind: string;
+            /**
+             * Node
+             * @default
+             */
+            node: string;
+            /**
+             * Ttl S
+             * @default 30
+             */
+            ttl_s: number;
+        };
         /** PromptRequest */
         PromptRequest: {
             /** Prompt */
@@ -582,6 +706,32 @@ export interface components {
             /** Message */
             msg: string;
             /** Error Type */
+            type: string;
+        };
+        /**
+         * VoiceEventRequest
+         * @description A ``voice.*`` event reported by a voice client (e.g. Mjölnir).
+         *
+         *     Only the ``voice.`` namespace may be ingested; everything else in the log
+         *     is written by the core services and adapters themselves.
+         */
+        VoiceEventRequest: {
+            /** Client Id */
+            client_id: string;
+            /** Correlation Id */
+            correlation_id?: string | null;
+            /**
+             * Node
+             * @default
+             */
+            node: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /** Session Id */
+            session_id?: string | null;
+            /** Type */
             type: string;
         };
     };
@@ -707,6 +857,90 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Interaction"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_presence_api_presence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresenceListResponse"];
+                };
+            };
+        };
+    };
+    report_presence_api_presence__client_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresenceReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientPresence"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forget_presence_api_presence__client_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -1004,6 +1238,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ingest_voice_event_api_voice_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoiceEventRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Event"];
                 };
             };
             /** @description Validation Error */

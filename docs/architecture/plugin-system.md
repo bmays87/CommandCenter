@@ -29,9 +29,9 @@ See `docs/development/plugin-packaging.md` for the author-facing how-to.
 | `adapter` | `AgentAdapter` | — (claude-code, aider, codex ship separately) |
 | `notifier` | `NotificationChannel` | log channel (ntfy + desktop built in) |
 | `summarizer` | `Summarizer` | — (optional; `prodeo-summarizer-ollama` reference) |
-| `stt` | `SpeechToText` | — (phase 4; faster-whisper reference) |
-| `tts` | `TextToSpeech` | — (phase 4; Piper reference) |
-| `wakeword` | `WakeWordDetector` | — (phase 4; OpenWakeWord reference) |
+| `stt` | `SpeechToText` | — (`prodeo-stt-fasterwhisper` reference; `-parakeet` for GPUs) |
+| `tts` | `TextToSpeech` | — (`prodeo-tts-piper` reference) |
+| `wakeword` | `WakeWordDetector` | — (`prodeo-wakeword-openwakeword` reference) |
 | `eventstore` | `EventStore` | SQLite (see ADR-0003; contract suite is the gate) |
 | `statestore` | `StateStore` | SQLite |
 
@@ -41,8 +41,16 @@ and `summarizer` kinds via manifests. The built-in notification channels
 as plugins alongside them. The cron **scheduler** shipped as a core service
 (`prodeo.scheduler`), not a plugin kind — no second implementation is on the
 horizon, and speculative seams are against the house rules; the table row was
-removed until substitution is real. `eventstore`/`statestore`/voice kinds
-remain planned.
+removed until substitution is real. `eventstore`/`statestore` kinds remain
+planned.
+
+Phase 4 status: the voice kinds (`wakeword`/`stt`/`tts`) are real. They share
+the entry-point group and manifest contract, but their **host is the voice
+client process** (`prodeo-mjolnir`), where their Protocols also live
+(`prodeo_mjolnir.engines`) — the server's Plugin Host recognizes and skips
+them, so co-installing engines next to the server is harmless (ADR-0010).
+Unlike the server host, the engine loader fails fast: a voice client without
+its ears or voice has nothing to contain into.
 
 ## Security Posture
 

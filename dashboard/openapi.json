@@ -79,6 +79,47 @@
         "title": "AnswerRequest",
         "type": "object"
       },
+      "ClientPresence": {
+        "description": "One client's latest heartbeat.",
+        "properties": {
+          "attentive": {
+            "title": "Attentive",
+            "type": "boolean"
+          },
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_seen": {
+            "format": "date-time",
+            "title": "Last Seen",
+            "type": "string"
+          },
+          "node": {
+            "default": "",
+            "title": "Node",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id",
+          "kind",
+          "attentive",
+          "last_seen",
+          "expires_at"
+        ],
+        "title": "ClientPresence",
+        "type": "object"
+      },
       "CreateScheduleRequest": {
         "description": "Define a cron-style agent launch (the launch fields mirror LaunchRequest).",
         "properties": {
@@ -465,6 +506,56 @@
         "title": "LaunchSpec",
         "type": "object"
       },
+      "PresenceListResponse": {
+        "properties": {
+          "any_attentive": {
+            "title": "Any Attentive",
+            "type": "boolean"
+          },
+          "clients": {
+            "items": {
+              "$ref": "#/components/schemas/ClientPresence"
+            },
+            "title": "Clients",
+            "type": "array"
+          }
+        },
+        "required": [
+          "clients",
+          "any_attentive"
+        ],
+        "title": "PresenceListResponse",
+        "type": "object"
+      },
+      "PresenceReport": {
+        "description": "One client heartbeat: 'I am here, and the user is/isn't engaged.'",
+        "properties": {
+          "attentive": {
+            "default": false,
+            "title": "Attentive",
+            "type": "boolean"
+          },
+          "kind": {
+            "default": "client",
+            "title": "Kind",
+            "type": "string"
+          },
+          "node": {
+            "default": "",
+            "title": "Node",
+            "type": "string"
+          },
+          "ttl_s": {
+            "default": 30.0,
+            "exclusiveMinimum": 0.0,
+            "maximum": 3600.0,
+            "title": "Ttl S",
+            "type": "number"
+          }
+        },
+        "title": "PresenceReport",
+        "type": "object"
+      },
       "PromptRequest": {
         "properties": {
           "prompt": {
@@ -701,6 +792,57 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VoiceEventRequest": {
+        "description": "A ``voice.*`` event reported by a voice client (e.g. Mj\u00f6lnir).\n\nOnly the ``voice.`` namespace may be ingested; everything else in the log\nis written by the core services and adapters themselves.",
+        "properties": {
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "node": {
+            "default": "",
+            "title": "Node",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "client_id"
+        ],
+        "title": "VoiceEventRequest",
         "type": "object"
       }
     }
@@ -959,6 +1101,106 @@
           }
         },
         "summary": "Answer Interaction"
+      }
+    },
+    "/api/presence": {
+      "get": {
+        "description": "Live clients and whether any of them holds the user's attention.",
+        "operationId": "list_presence_api_presence_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresenceListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Presence"
+      }
+    },
+    "/api/presence/{client_id}": {
+      "delete": {
+        "description": "Clean goodbye; missing clients are fine (expiry races are expected).",
+        "operationId": "forget_presence_api_presence__client_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "client_id",
+            "required": true,
+            "schema": {
+              "title": "Client Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Forget Presence"
+      },
+      "put": {
+        "description": "Heartbeat: entries expire after ``ttl_s`` unless re-reported.",
+        "operationId": "report_presence_api_presence__client_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "client_id",
+            "required": true,
+            "schema": {
+              "title": "Client Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresenceReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientPresence"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Report Presence"
       }
     },
     "/api/schedules": {
@@ -1345,6 +1587,45 @@
           }
         },
         "summary": "Terminate Session"
+      }
+    },
+    "/api/voice/events": {
+      "post": {
+        "description": "Ingest one ``voice.*`` event from a voice client into the log.",
+        "operationId": "ingest_voice_event_api_voice_events_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingest Voice Event"
       }
     }
   }
