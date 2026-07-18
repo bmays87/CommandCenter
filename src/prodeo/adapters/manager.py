@@ -45,9 +45,11 @@ from prodeo.events import new_event
 from prodeo.events import types as ev
 from prodeo.mediation import (
     Answer,
+    DeliverFn,
     Interaction,
     InteractionKind,
     InteractionRequest,
+    InteractionStatus,
     MediationService,
 )
 from prodeo.sessions import Session, SessionDescriptor, SessionRegistry
@@ -454,12 +456,10 @@ class AdapterManager:
                 _log.exception("adapter.respond_failed", adapter=name)
                 await self._error(name, "respond_failed", str(exc), session_id=session.id)
                 return
-            with contextlib.suppress(IllegalTransitionError):
-                await self._registry.observe_state(
-                    session.id, SessionState.RUNNING, reason="interaction_resolved"
-                )
+            await self._resume(session.id, "interaction_resolved")
 
-        await self._mediation.open(
+        await self._open_mediated(
+            session,
             InteractionRequest(
                 session_id=session.id,
                 adapter=name,
@@ -472,9 +472,89 @@ class AdapterManager:
             ),
             deliver,
         )
+
+    async def _open_mediated(
+        self, session: Session, request: InteractionRequest, deliver: DeliverFn
+    ) -> Interaction:
+        """Open an interaction and park the session on the human."""
+        interaction = await self._mediation.open(request, deliver)
         with contextlib.suppress(IllegalTransitionError):
             await self._registry.observe_state(
                 session.id, SessionState.WAITING_ON_USER, reason="interaction_requested"
+            )
+        return interaction
+
+    async def _resume(self, session_id: str, reason: str) -> None:
+        with contextlib.suppress(IllegalTransitionError):
+            await self._registry.observe_state(session_id, SessionState.RUNNING, reason=reason)
+
+    # ------------------------------------------------- external interactions
+
+    async def open_external_interaction(
+        self,
+        *,
+        adapter: str,
+        session_native_id: str,
+        native_id: str,
+        kind: InteractionKind,
+        title: str,
+        body: str = "",
+        options: list[str] | None = None,
+        timeout_s: float,
+    ) -> tuple[Interaction, "asyncio.Future[Interaction]"]:
+        """Open an interaction on behalf of an external delivery path.
+
+        The caller (e.g. a blocked hook's HTTP request, ADR-0011) carries the
+        resolution back to the agent itself, so there is no capability gate
+        and ``adapter.respond()`` is never invoked. The returned future
+        resolves with the interaction when mediation delivers a terminal
+        status (answered or timed out); cancellation is observable only
+        through :meth:`MediationService.get`.
+        """
+        adapter_obj = self._require_adapter(adapter)
+        session = self._resolve(adapter, session_native_id)
+        if session is None:
+            # The hook for a brand-new session can beat discovery; refresh
+            # this adapter's catalogue once rather than dropping the request.
+            await self._discover(adapter, adapter_obj)
+            session = self._resolve(adapter, session_native_id)
+        if session is None:
+            raise UnknownSessionError(session_native_id)
+        session_id = session.id
+
+        resolved: asyncio.Future[Interaction] = asyncio.get_running_loop().create_future()
+
+        async def deliver(interaction: Interaction, answer: Answer) -> None:
+            if not resolved.done():
+                resolved.set_result(interaction)
+            if interaction.status is InteractionStatus.ANSWERED:
+                await self._resume(session_id, "interaction_resolved")
+            # On TIMED_OUT the session deliberately stays waiting_on_user:
+            # the requester falls through to prompting the human locally, and
+            # transcript activity resumes the session naturally.
+
+        interaction = await self._open_mediated(
+            session,
+            InteractionRequest(
+                session_id=session_id,
+                adapter=adapter,
+                native_id=native_id,
+                kind=kind,
+                title=title,
+                body=body,
+                options=list(options or []),
+                timeout_s=timeout_s,
+            ),
+            deliver,
+        )
+        return interaction, resolved
+
+    async def withdraw_external_interaction(self, interaction_id: str, *, reason: str) -> None:
+        """Cancel a pending external interaction (no-op once resolved)."""
+        interaction = self._mediation.get(interaction_id)
+        if interaction is not None and interaction.status is InteractionStatus.PENDING:
+            await self._mediation.cancel_native(
+                interaction.adapter, interaction.native_id, reason=reason
             )
 
     def _resolve(self, name: str, native_id: str) -> Session | None:

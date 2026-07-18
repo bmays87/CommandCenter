@@ -274,6 +274,24 @@ async def test_sdk_stream_failure_reports_failed_state(harness: Harness) -> None
 
 
 @pytest.mark.asyncio
+async def test_default_client_factory_marks_sessions_managed() -> None:
+    """The PRODEO_MANAGED marker keeps the PermissionRequest hook out of
+    SDK-launched sessions (can_use_tool already mediates them, ADR-0011)."""
+    from typing import cast
+
+    from prodeo_adapter_claude_code.launcher import default_client_factory
+
+    async def decide(tool_name: str, input_data: dict[str, Any]) -> Answer:
+        return Answer(decision="allow")
+
+    client = default_client_factory(LaunchSpec(options={"env": {"KEEP": "me"}}), decide)
+
+    env = cast("Any", client).options.env
+    assert env["PRODEO_MANAGED"] == "1"
+    assert env["KEEP"] == "me"  # caller-supplied env survives the merge
+
+
+@pytest.mark.asyncio
 async def test_launch_without_init_message_fails_cleanly(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

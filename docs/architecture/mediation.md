@@ -18,6 +18,33 @@ An interaction opens when an adapter reports an `InteractionObservation`
 (the Adapter Manager validates it and calls `MediationService.open`). It
 resolves exactly once; every resolution is a published fact.
 
+## External interactions (ADR-0011)
+
+The second entry path: an externally blocked requester — the interactive
+Claude Code `PermissionRequest` hook — submits its own interaction via
+`POST /api/interactions/external` and long-polls for the resolution. The
+Adapter Manager's `open_external_interaction()` differs from the
+observation path in three deliberate ways:
+
+- **No capability gate.** The requester carries the answer back itself, so
+  `adapter.respond()` is never invoked and an observe-only adapter is fine.
+- **The response distinguishes `answered` from everything else.** Only an
+  explicit human answer carries an `answer` object; `timed_out` and
+  `cancelled` return `answer: null` and the requester falls through to its
+  own local prompt (never an implicit deny).
+- **A timed-out permission leaves the session `waiting_on_user`.** Unlike the
+  adapter path (where timeout auto-denies and the agent moves on), the
+  external requester reacts to timeout by prompting its human locally — the
+  session is still honestly parked on a person, and transcript activity
+  resumes it naturally once they answer.
+
+If the requester disconnects mid-poll (its human answered at the terminal, or
+the hook process died), the route withdraws the pending interaction with
+reason `requester_disconnected` — the card leaves the inbox instead of going
+stale. ADR-0007's restart semantics apply unchanged: a pending external
+interaction does not survive a server restart, and the hook's fail-open
+posture shows the terminal prompt instead.
+
 ## Design decisions
 
 - **Exactly-once resolution.** `answer()` flips status synchronously — no

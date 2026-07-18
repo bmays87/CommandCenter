@@ -262,6 +262,86 @@
         "title": "EventListResponse",
         "type": "object"
       },
+      "ExternalInteractionRequest": {
+        "description": "An externally blocked requester (e.g. a permission hook, ADR-0011)\nsubmitting an interaction and long-polling for its resolution.",
+        "properties": {
+          "adapter": {
+            "title": "Adapter",
+            "type": "string"
+          },
+          "body": {
+            "default": "",
+            "title": "Body",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/InteractionKind",
+            "default": "permission"
+          },
+          "native_id": {
+            "default": "",
+            "title": "Native Id",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "session_native_id": {
+            "title": "Session Native Id",
+            "type": "string"
+          },
+          "timeout_s": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 3600.0,
+            "title": "Timeout S",
+            "type": "number"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "adapter",
+          "session_native_id",
+          "title",
+          "timeout_s"
+        ],
+        "title": "ExternalInteractionRequest",
+        "type": "object"
+      },
+      "ExternalInteractionResponse": {
+        "description": "The interaction's terminal state; ``answer`` only when answered (the\nrequester falls through to its own prompt on timeout/cancellation).",
+        "properties": {
+          "answer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Answer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "interaction_id": {
+            "title": "Interaction Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/InteractionStatus"
+          }
+        },
+        "required": [
+          "interaction_id",
+          "status"
+        ],
+        "title": "ExternalInteractionResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1051,6 +1131,45 @@
           }
         },
         "summary": "List Interactions"
+      }
+    },
+    "/api/interactions/external": {
+      "post": {
+        "description": "Open an interaction for an externally blocked agent and long-poll.\n\nThe response is only sent once the interaction leaves ``pending``\n(answered, timed out, or cancelled). If the requester disconnects\nfirst \u2014 its human answered locally \u2014 the interaction is withdrawn.",
+        "operationId": "external_interaction_api_interactions_external_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalInteractionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalInteractionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "External Interaction"
       }
     },
     "/api/interactions/{interaction_id}/answer": {

@@ -43,13 +43,13 @@ from prodeo.errors import CapabilityNotSupportedError
 from prodeo.mediation.model import Answer, InteractionKind
 from prodeo.sessions.model import SessionDescriptor
 from prodeo.sessions.state import SessionState
+from prodeo_adapter_claude_code.format import permission_prompt
 from prodeo_adapter_claude_code.launcher import ClientFactory, SdkLauncher, sdk_available
 from prodeo_adapter_claude_code.parser import TranscriptParser
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 
 _PEEK_BYTES = 64 * 1024  # how much of a transcript discovery reads for metadata
-_INTERACTION_BODY_CHARS = 4000  # tool input shown to the human, capped
 
 
 @dataclass
@@ -165,13 +165,13 @@ class ClaudeCodeAdapter(ObserveOnlyAdapter):
         self, native_id: str, interaction_native_id: str, tool_name: str, input_data: dict[str, Any]
     ) -> None:
         assert self._ctx is not None
-        body = json.dumps(input_data, indent=2, default=str)[:_INTERACTION_BODY_CHARS]
+        title, body = permission_prompt(tool_name, input_data)
         await self._ctx.report(
             InteractionObservation(
                 native_id=native_id,
                 interaction_native_id=interaction_native_id,
                 kind=InteractionKind.PERMISSION,
-                title=f"Allow {tool_name}?",
+                title=title,
                 body=body,
                 timeout_s=self._permission_timeout_s,
             )

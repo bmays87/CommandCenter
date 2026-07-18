@@ -87,7 +87,12 @@ def default_client_factory(spec: LaunchSpec, decide: DecideFn) -> SdkClient:
         kwargs["model"] = spec.model
     if spec.permission_mode:
         kwargs["permission_mode"] = spec.permission_mode
-    options = ClaudeAgentOptions(can_use_tool=can_use_tool, **kwargs)
+    # Launched sessions are already mediated through can_use_tool; the marker
+    # makes the interactive PermissionRequest hook pass through (ADR-0011) so
+    # one permission never opens two interactions.
+    env: dict[str, str] = dict(kwargs.pop("env", None) or {})
+    env["PRODEO_MANAGED"] = "1"
+    options = ClaudeAgentOptions(can_use_tool=can_use_tool, env=env, **kwargs)
     return ClaudeSDKClient(options=options)
 
 

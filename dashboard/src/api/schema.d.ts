@@ -55,6 +55,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/interactions/external": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * External Interaction
+         * @description Open an interaction for an externally blocked agent and long-poll.
+         *
+         *     The response is only sent once the interaction leaves ``pending``
+         *     (answered, timed out, or cancelled). If the requester disconnects
+         *     first — its human answered locally — the interaction is withdrawn.
+         */
+        post: operations["external_interaction_api_interactions_external_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/interactions/{interaction_id}/answer": {
         parameters: {
             query?: never;
@@ -440,6 +464,46 @@ export interface components {
             /** Events */
             events: components["schemas"]["Event"][];
         };
+        /**
+         * ExternalInteractionRequest
+         * @description An externally blocked requester (e.g. a permission hook, ADR-0011)
+         *     submitting an interaction and long-polling for its resolution.
+         */
+        ExternalInteractionRequest: {
+            /** Adapter */
+            adapter: string;
+            /**
+             * Body
+             * @default
+             */
+            body: string;
+            /** @default permission */
+            kind: components["schemas"]["InteractionKind"];
+            /**
+             * Native Id
+             * @default
+             */
+            native_id: string;
+            /** Options */
+            options?: string[];
+            /** Session Native Id */
+            session_native_id: string;
+            /** Timeout S */
+            timeout_s: number;
+            /** Title */
+            title: string;
+        };
+        /**
+         * ExternalInteractionResponse
+         * @description The interaction's terminal state; ``answer`` only when answered (the
+         *     requester falls through to its own prompt on timeout/cancellation).
+         */
+        ExternalInteractionResponse: {
+            answer?: components["schemas"]["Answer"] | null;
+            /** Interaction Id */
+            interaction_id: string;
+            status: components["schemas"]["InteractionStatus"];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -821,6 +885,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InteractionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    external_interaction_api_interactions_external_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExternalInteractionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalInteractionResponse"];
                 };
             };
             /** @description Validation Error */

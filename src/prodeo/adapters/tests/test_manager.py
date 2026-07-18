@@ -475,6 +475,159 @@ async def test_interaction_closed_cancels_and_resumes(
 
 
 @pytest.mark.asyncio
+async def test_external_interaction_opens_on_observe_only_adapter(
+    bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
+) -> None:
+    """No capability gate: the external caller carries the answer back itself."""
+    adapter = ScriptedAdapter()
+    mediation = MediationService(bus)
+    manager = make_manager(bus, registry, tmp_path, mediation)
+    manager.add(adapter)
+    await manager.start()
+    session = registry.resolve("scripted", "n1")
+    assert session is not None
+
+    interaction, resolved = await manager.open_external_interaction(
+        adapter="scripted",
+        session_native_id="n1",
+        native_id="hook-1",
+        kind=InteractionKind.PERMISSION,
+        title="Allow Bash?",
+        body="{}",
+        timeout_s=60,
+    )
+
+    assert interaction.session_id == session.id
+    assert interaction.status == InteractionStatus.PENDING
+    assert not resolved.done()
+    assert session.state == SessionState.WAITING_ON_USER
+    await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_external_interaction_rediscovers_unknown_session_then_404s(
+    bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
+) -> None:
+    adapter = ScriptedAdapter()
+    adapter.descriptors = []
+    manager = make_manager(bus, registry, tmp_path, MediationService(bus))
+    manager.add(adapter)
+    await manager.start()
+
+    # A brand-new session's hook can beat discovery: a targeted re-discovery
+    # resolves it without waiting for the periodic loop.
+    adapter.descriptors = [SessionDescriptor(native_id="fresh")]
+    interaction, _resolved = await manager.open_external_interaction(
+        adapter="scripted",
+        session_native_id="fresh",
+        native_id="hook-1",
+        kind=InteractionKind.PERMISSION,
+        title="Allow Bash?",
+        timeout_s=60,
+    )
+    assert interaction.status == InteractionStatus.PENDING
+
+    with pytest.raises(UnknownSessionError):
+        await manager.open_external_interaction(
+            adapter="scripted",
+            session_native_id="ghost",
+            native_id="hook-2",
+            kind=InteractionKind.PERMISSION,
+            title="Allow Bash?",
+            timeout_s=60,
+        )
+    await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_external_interaction_answer_resolves_future_without_adapter_respond(
+    bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
+) -> None:
+    adapter = ControlAdapter()
+    adapter.descriptors = [SessionDescriptor(native_id="n1")]
+    mediation = MediationService(bus)
+    manager = make_manager(bus, registry, tmp_path, mediation)
+    manager.add(adapter)
+    await manager.start()
+
+    interaction, resolved = await manager.open_external_interaction(
+        adapter="controlled",
+        session_native_id="n1",
+        native_id="hook-1",
+        kind=InteractionKind.PERMISSION,
+        title="Allow Bash?",
+        timeout_s=60,
+    )
+    await mediation.answer(interaction.id, Answer(decision="allow"), answered_by="voice")
+
+    done = await asyncio.wait_for(resolved, timeout=1)
+    assert done.status == InteractionStatus.ANSWERED
+    assert done.answer is not None and done.answer.decision == "allow"
+    assert adapter.responses == []  # the blocked hook delivers, not the adapter
+    session = registry.resolve("controlled", "n1")
+    assert session is not None and session.state == SessionState.RUNNING
+    await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_external_interaction_timeout_resolves_future_and_stays_waiting(
+    bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
+) -> None:
+    adapter = ScriptedAdapter()
+    mediation = MediationService(bus)
+    manager = make_manager(bus, registry, tmp_path, mediation)
+    manager.add(adapter)
+    await manager.start()
+
+    _interaction, resolved = await manager.open_external_interaction(
+        adapter="scripted",
+        session_native_id="n1",
+        native_id="hook-1",
+        kind=InteractionKind.PERMISSION,
+        title="Allow Bash?",
+        timeout_s=0.05,
+    )
+
+    done = await asyncio.wait_for(resolved, timeout=1)
+    assert done.status == InteractionStatus.TIMED_OUT
+    # The requester now prompts its human locally; the session honestly stays
+    # parked until transcript activity resumes it.
+    session = registry.resolve("scripted", "n1")
+    assert session is not None and session.state == SessionState.WAITING_ON_USER
+    await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_withdraw_external_interaction_cancels_pending_and_noops_resolved(
+    bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
+) -> None:
+    adapter = ScriptedAdapter()
+    mediation = MediationService(bus)
+    manager = make_manager(bus, registry, tmp_path, mediation)
+    manager.add(adapter)
+    await manager.start()
+
+    interaction, resolved = await manager.open_external_interaction(
+        adapter="scripted",
+        session_native_id="n1",
+        native_id="hook-1",
+        kind=InteractionKind.PERMISSION,
+        title="Allow Bash?",
+        timeout_s=60,
+    )
+    await manager.withdraw_external_interaction(interaction.id, reason="requester_disconnected")
+
+    current = mediation.get(interaction.id)
+    assert current is not None and current.status == InteractionStatus.CANCELLED
+    assert not resolved.done()  # cancellation is observed via status, not the future
+
+    # withdrawing again (or after resolution) is a no-op
+    await manager.withdraw_external_interaction(interaction.id, reason="requester_disconnected")
+    assert current.status == InteractionStatus.CANCELLED
+    await manager.stop()
+
+
+@pytest.mark.asyncio
 async def test_failed_respond_is_contained_as_adapter_error(
     bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
 ) -> None:

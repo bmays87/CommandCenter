@@ -17,6 +17,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, 
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from ulid import ULID
 
 from prodeo.adapters import AdapterManager, LaunchSpec
 from prodeo.api.auth import make_auth_dependency, websocket_authorized
@@ -33,7 +34,13 @@ from prodeo.errors import (
     UnknownSessionError,
 )
 from prodeo.events import Event, new_event
-from prodeo.mediation import Answer, Interaction, InteractionStatus, MediationService
+from prodeo.mediation import (
+    Answer,
+    Interaction,
+    InteractionKind,
+    InteractionStatus,
+    MediationService,
+)
 from prodeo.persistence.interface import EventQuery, EventStore
 from prodeo.presence import ClientPresence, PresenceTracker
 from prodeo.scheduler import Schedule, SchedulerService
@@ -84,6 +91,30 @@ class AnswerRequest(BaseModel):
     decision: Literal["allow", "deny"] | None = None
     text: str = ""
     updated_input: dict[str, Any] | None = None
+
+
+class ExternalInteractionRequest(BaseModel):
+    """An externally blocked requester (e.g. a permission hook, ADR-0011)
+    submitting an interaction and long-polling for its resolution."""
+
+    adapter: str
+    session_native_id: str
+    kind: InteractionKind = InteractionKind.PERMISSION
+    title: str
+    body: str = ""
+    options: list[str] = Field(default_factory=list)
+    #: Adapter-native interaction id; the server assigns a ULID when empty.
+    native_id: str = ""
+    timeout_s: float = Field(gt=0, le=3600)
+
+
+class ExternalInteractionResponse(BaseModel):
+    """The interaction's terminal state; ``answer`` only when answered (the
+    requester falls through to its own prompt on timeout/cancellation)."""
+
+    interaction_id: str
+    status: InteractionStatus
+    answer: Answer | None = None
 
 
 class LaunchRequest(BaseModel):
@@ -249,6 +280,56 @@ def create_app(
         """Resolve an interaction; the first answer wins (409 afterwards)."""
         answer = Answer(decision=body.decision, text=body.text, updated_input=body.updated_input)
         return await mediation.answer(interaction_id, answer, answered_by="api")
+
+    @app.post(
+        "/api/interactions/external",
+        response_model=ExternalInteractionResponse,
+        dependencies=[auth],
+    )
+    async def external_interaction(
+        request: Request, body: ExternalInteractionRequest
+    ) -> ExternalInteractionResponse:
+        """Open an interaction for an externally blocked agent and long-poll.
+
+        The response is only sent once the interaction leaves ``pending``
+        (answered, timed out, or cancelled). If the requester disconnects
+        first — its human answered locally — the interaction is withdrawn.
+        """
+        interaction, resolved = await manager.open_external_interaction(
+            adapter=body.adapter,
+            session_native_id=body.session_native_id,
+            native_id=body.native_id or str(ULID()),
+            kind=body.kind,
+            title=body.title,
+            body=body.body,
+            options=body.options,
+            timeout_s=body.timeout_s,
+        )
+        try:
+            while True:
+                await asyncio.wait({resolved}, timeout=0.5)
+                current = mediation.get(interaction.id)
+                if current is not None and current.status is not InteractionStatus.PENDING:
+                    return ExternalInteractionResponse(
+                        interaction_id=current.id,
+                        status=current.status,
+                        answer=(
+                            current.answer if current.status is InteractionStatus.ANSWERED else None
+                        ),
+                    )
+                if await request.is_disconnected():
+                    await manager.withdraw_external_interaction(
+                        interaction.id, reason="requester_disconnected"
+                    )
+                    return ExternalInteractionResponse(
+                        interaction_id=interaction.id,
+                        status=InteractionStatus.CANCELLED,
+                    )
+        except asyncio.CancelledError:
+            await manager.withdraw_external_interaction(
+                interaction.id, reason="requester_disconnected"
+            )
+            raise
 
     @app.post("/api/sessions", response_model=Session, status_code=201, dependencies=[auth])
     async def launch_session(body: LaunchRequest) -> Session:

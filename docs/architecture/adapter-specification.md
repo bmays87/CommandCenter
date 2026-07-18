@@ -58,6 +58,15 @@ agent is waiting on a human, and `InteractionClosedObservation` when the agent
 stopped waiting on its own (e.g. answered in the terminal). The manager opens a
 mediated interaction for the former; the answer arrives via `respond()`.
 
+There is one seam that bypasses the adapter entirely: an *external* requester
+that is itself blocked (e.g. a Claude Code `PermissionRequest` hook) may
+submit an interaction through `POST /api/interactions/external` and long-poll
+for the answer (ADR-0011). The manager resolves the session by adapter-native
+id, but no capability is required and `respond()` is never called — the
+requester carries the answer back. Adapter packages may ship such helpers
+(the claude-code package ships `prodeo-claude-hook`), but the core stays
+agent-agnostic.
+
 ```python
 class AdapterCapabilities(BaseModel):
     observe: bool = True          # always true

@@ -3,6 +3,8 @@
 (WS is covered in tests/integration.)
 """
 
+import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -27,6 +29,7 @@ from prodeo.mediation import (
     Interaction,
     InteractionKind,
     InteractionRequest,
+    InteractionStatus,
     MediationService,
 )
 from prodeo.persistence import EventRecorder, SqliteEventStore
@@ -255,6 +258,100 @@ async def test_answer_interaction_first_wins_then_409(env: Env) -> None:
 
     missing = await env.client.post("/api/interactions/nope/answer", json={"decision": "allow"})
     assert missing.status_code == 404
+
+
+def _external_payload(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "adapter": "fake",
+        "session_native_id": "n1",
+        "title": "Allow Bash?",
+        "body": '{\n  "command": "rm -rf build"\n}',
+        "timeout_s": 30,
+    }
+    payload.update(overrides)
+    return payload
+
+
+@pytest.mark.asyncio
+async def test_external_interaction_long_polls_until_answered(env: Env) -> None:
+    await env.registry.upsert_discovered("fake", SessionDescriptor(native_id="n1"))
+
+    poll = asyncio.create_task(
+        env.client.post("/api/interactions/external", json=_external_payload())
+    )
+    await _wait_for_pending(env)
+    (pending,) = env.mediation.list_interactions(status=InteractionStatus.PENDING)
+    assert pending.title == "Allow Bash?"
+
+    answered = await env.client.post(
+        f"/api/interactions/{pending.id}/answer",
+        json={"decision": "allow", "updated_input": {"command": "rm -rf build/"}},
+    )
+    assert answered.status_code == 200
+
+    resp = await asyncio.wait_for(poll, timeout=5)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["interaction_id"] == pending.id
+    assert body["status"] == "answered"
+    assert body["answer"]["decision"] == "allow"
+    assert body["answer"]["updated_input"] == {"command": "rm -rf build/"}
+    assert env.adapter.responses == []  # the long-poll response carries the answer
+
+
+@pytest.mark.asyncio
+async def test_external_interaction_timeout_returns_no_answer(env: Env) -> None:
+    await env.registry.upsert_discovered("fake", SessionDescriptor(native_id="n1"))
+
+    resp = await env.client.post(
+        "/api/interactions/external", json=_external_payload(timeout_s=0.1)
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "timed_out"
+    assert body["answer"] is None
+
+
+@pytest.mark.asyncio
+async def test_external_interaction_rejects_bad_requests(env: Env) -> None:
+    payload = _external_payload(session_native_id="ghost")
+    assert (await env.client.post("/api/interactions/external", json=payload)).status_code == 404
+
+    payload = _external_payload(adapter="unknown")
+    assert (await env.client.post("/api/interactions/external", json=payload)).status_code == 400
+
+    payload = _external_payload(timeout_s=0)
+    assert (await env.client.post("/api/interactions/external", json=payload)).status_code == 422
+
+    resp = await env.client.post(
+        "/api/interactions/external", json=_external_payload(), headers={"Authorization": ""}
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_external_interaction_client_cancel_withdraws(env: Env) -> None:
+    await env.registry.upsert_discovered("fake", SessionDescriptor(native_id="n1"))
+
+    poll = asyncio.create_task(
+        env.client.post("/api/interactions/external", json=_external_payload())
+    )
+    await _wait_for_pending(env)
+    (pending,) = env.mediation.list_interactions(status=InteractionStatus.PENDING)
+
+    poll.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await poll
+
+    current = env.mediation.get(pending.id)
+    assert current is not None and current.status == InteractionStatus.CANCELLED
+
+
+async def _wait_for_pending(env: Env) -> None:
+    async with asyncio.timeout(5):
+        while not env.mediation.list_interactions(status=InteractionStatus.PENDING):
+            await asyncio.sleep(0.01)
 
 
 @pytest.mark.asyncio
