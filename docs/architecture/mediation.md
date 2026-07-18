@@ -37,6 +37,10 @@ observation path in three deliberate ways:
   external requester reacts to timeout by prompting its human locally — the
   session is still honestly parked on a person, and transcript activity
   resumes it naturally once they answer.
+- **Discovery never un-parks a session.** Re-discovery's file-level state
+  hints (mtime heuristics) cannot see a mediation block, so the registry
+  ignores them entirely while a session is `waiting_on_user`; only mediation
+  resolution or the watcher's explicit observations resume it.
 
 If the requester disconnects mid-poll (its human answered at the terminal, or
 the hook process died), the route withdraws the pending interaction with

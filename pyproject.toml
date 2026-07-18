@@ -16,6 +16,8 @@ dependencies = [
     "websockets>=12",
     # ntfy notification channel (plain async HTTP POSTs)
     "httpx>=0.27",
+    # zoneinfo has no system tz database on Windows (scheduler cron timezones)
+    "tzdata>=2024.1; sys_platform == 'win32'",
 ]
 
 [project.scripts]
@@ -33,7 +35,7 @@ dev = [
     "prodeo-adapter-skeleton",
     "prodeo-adapter-aider",
     "prodeo-adapter-codex",
-    "prodeo-mjolnir",
+    "prodeo-mjolnir[audio]",
     "prodeo-wakeword-openwakeword",
     "prodeo-stt-fasterwhisper",
     "prodeo-tts-piper",

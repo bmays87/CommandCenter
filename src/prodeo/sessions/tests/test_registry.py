@@ -74,6 +74,28 @@ async def test_rediscovery_updates_quietly_and_ignores_weak_state_hints(
 
 
 @pytest.mark.asyncio
+async def test_rediscovery_never_unparks_a_session_waiting_on_a_human(
+    bus: InProcessEventBus,
+) -> None:
+    """Discovery's file-level heuristics cannot see a mediation block: a
+    ``waiting_on_user`` session must survive re-discovery hinting ``running``
+    (legal for the resolution path, wrong as a weak signal)."""
+    registry = SessionRegistry(bus)
+    session = await registry.upsert_discovered("claude-code", SessionDescriptor(native_id="abc"))
+    await registry.observe_state(
+        session.id, SessionState.WAITING_ON_USER, reason="interaction_requested"
+    )
+
+    sub = bus.subscribe("*", name="probe")
+    again = await registry.upsert_discovered(
+        "claude-code", SessionDescriptor(native_id="abc", state=SessionState.RUNNING)
+    )
+
+    assert again.state == SessionState.WAITING_ON_USER
+    assert await _drain(sub) == []
+
+
+@pytest.mark.asyncio
 async def test_terminal_transition_emits_lifecycle_event_and_sets_ended_at(
     bus: InProcessEventBus,
 ) -> None:

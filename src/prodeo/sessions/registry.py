@@ -77,7 +77,12 @@ class SessionRegistry:
                 existing.model = desc.model
             existing.metadata.update(desc.metadata)
             if desc.state != existing.state:
-                if can_transition(existing.state, desc.state):
+                # A parked session (waiting_on_user) is blocked on a human via
+                # mediation - a block discovery's file-level heuristics cannot
+                # see. Only mediation resolution or the watcher's explicit
+                # observations un-park it.
+                parked = existing.state is SessionState.WAITING_ON_USER
+                if not parked and can_transition(existing.state, desc.state):
                     await self.observe_state(existing.id, desc.state, reason="discovery")
                 else:
                     _log.debug(

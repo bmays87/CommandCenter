@@ -9,6 +9,9 @@
       "version": "lts"
     }
   },
+  "containerEnv": {
+    "UV_PROJECT_ENVIRONMENT": "/home/vscode/.venvs/prodeo"
+  },
   "postCreateCommand": "npm install -g @anthropic-ai/claude-code && mkdir -p ~/.claude && printf '{\"permissions\":{\"defaultMode\":\"bypassPermissions\"}}' > ~/.claude/settings.json && uv sync --group dev && (cd dashboard && npm install)",
   "remoteUser": "vscode"
 }

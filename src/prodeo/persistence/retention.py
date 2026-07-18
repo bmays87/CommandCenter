@@ -26,6 +26,7 @@ import gzip
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import structlog
 from pydantic import BaseModel
@@ -36,8 +37,12 @@ from prodeo.errors import IllegalTransitionError
 from prodeo.events import Event, new_event
 from prodeo.events import types as ev
 from prodeo.persistence.interface import EventQuery, EventStore
-from prodeo.sessions.registry import SessionRegistry
 from prodeo.sessions.state import SessionState
+
+if TYPE_CHECKING:
+    # Runtime import would cycle: sessions.registry imports persistence.interface,
+    # and this module rides in via persistence.__init__.
+    from prodeo.sessions.registry import SessionRegistry
 
 _log = structlog.get_logger(__name__)
 
@@ -72,7 +77,7 @@ class RetentionService:
         self,
         bus: EventBus,
         store: EventStore,
-        registry: SessionRegistry,
+        registry: "SessionRegistry",
         *,
         archive_dir: Path,
         rules: list[RetentionRule] | None = None,

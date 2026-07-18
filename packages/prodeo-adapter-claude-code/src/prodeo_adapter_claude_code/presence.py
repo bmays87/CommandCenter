@@ -28,8 +28,8 @@ def seconds_since_input() -> float | None:
     try:
         if not ctypes.windll.user32.GetLastInputInfo(ctypes.byref(info)):
             return None
-        now = ctypes.windll.kernel32.GetTickCount()
+        now = int(ctypes.windll.kernel32.GetTickCount())
     except OSError:
         return None
     # GetTickCount wraps at ~49.7 days; unsigned 32-bit subtraction stays correct.
-    return ((now - info.dwTime) & 0xFFFFFFFF) / 1000.0
+    return ((now - int(info.dwTime)) & 0xFFFFFFFF) / 1000.0
