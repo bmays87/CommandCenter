@@ -12,6 +12,9 @@
   "containerEnv": {
     "UV_PROJECT_ENVIRONMENT": "/home/vscode/.venvs/prodeo"
   },
-  "postCreateCommand": "npm install -g @anthropic-ai/claude-code && mkdir -p ~/.claude && printf '{\"permissions\":{\"defaultMode\":\"bypassPermissions\"}}' > ~/.claude/settings.json && uv sync --group dev && (cd dashboard && npm install)",
+  "mounts": [
+    "source=prodeo-node-modules,target=${containerWorkspaceFolder}/dashboard/node_modules,type=volume"
+  ],
+  "postCreateCommand": "sudo chown vscode:vscode dashboard/node_modules && npm install -g @anthropic-ai/claude-code && mkdir -p ~/.claude && printf '{\"permissions\":{\"defaultMode\":\"bypassPermissions\"}}' > ~/.claude/settings.json && uv sync --group dev && (cd dashboard && npm install)",
   "remoteUser": "vscode"
 }
