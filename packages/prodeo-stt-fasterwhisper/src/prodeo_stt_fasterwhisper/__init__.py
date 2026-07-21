@@ -49,6 +49,11 @@ class FasterWhisperStt:
             raise ValueError(f"expected {SAMPLE_RATE} Hz audio, got {clip.sample_rate}")
         return await asyncio.to_thread(self._transcribe_sync, clip)
 
+    async def warmup(self) -> None:
+        """Load (and, on first ever run, download) the model off the critical
+        path so the first real command is warm - the ``Warmable`` capability."""
+        await asyncio.to_thread(self._ensure_model)
+
     def _transcribe_sync(self, clip: AudioClip) -> str:
         import numpy
 

@@ -41,6 +41,8 @@ class MjolnirSettings(BaseSettings):
     # Audio capture
     sample_rate: int = SAMPLE_RATE
     frame_ms: int = 80
+    #: Per-frame loudness (RMS) above which a frame counts as speech. This is
+    #: mic- and room-specific; run ``prodeo-mjolnir --calibrate`` to find yours.
     vad_threshold: float = 300.0
     vad_silence_ms: int = 800
     max_command_s: float = 12.0

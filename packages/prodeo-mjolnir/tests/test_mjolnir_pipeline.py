@@ -128,6 +128,19 @@ async def test_silence_after_wake_apologizes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stt_is_prewarmed_at_startup_without_consuming_a_transcript() -> None:
+    client = FakeServerClient()
+    pipeline, _, _, stt = _pipeline(client, ScriptedSource([]), ["status report"])
+
+    await pipeline.start()
+    await settle()
+    await pipeline.stop()
+
+    assert stt.warmups == 1  # model loaded off the critical path
+    assert stt.transcripts == ["status report"]  # warm-up did not eat the script
+
+
+@pytest.mark.asyncio
 async def test_heartbeat_reports_presence() -> None:
     client = FakeServerClient()
     pipeline, _, _, _ = _pipeline(client, ScriptedSource([SILENCE_FRAME] * 3), [])

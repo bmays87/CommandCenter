@@ -60,6 +60,19 @@ class SpeechToText(Protocol):
 
 
 @runtime_checkable
+class Warmable(Protocol):
+    """Optional capability: pre-load an engine's model off the critical path.
+
+    Model-backed engines load lazily on first use, so the first command after
+    boot otherwise pays the whole load. The pipeline calls :meth:`warmup` in
+    the background at startup when an engine offers it; engines that need no
+    warming simply don't implement it.
+    """
+
+    async def warmup(self) -> None: ...
+
+
+@runtime_checkable
 class TextToSpeech(Protocol):
     """Turns response text into speech audio."""
 

@@ -181,11 +181,16 @@ class FakeWakeWord:
 
 
 class FakeStt:
-    """Returns scripted transcripts, one per captured utterance."""
+    """Returns scripted transcripts, one per captured utterance.
+
+    Implements the optional ``Warmable`` capability (a no-op counter) so the
+    pipeline's startup pre-warm is exercised without consuming a transcript.
+    """
 
     def __init__(self, transcripts: list[str]) -> None:
         self.transcripts = list(transcripts)
         self.clips: list[AudioClip] = []
+        self.warmups = 0
 
     @property
     def name(self) -> str:
@@ -194,6 +199,9 @@ class FakeStt:
     async def transcribe(self, clip: AudioClip) -> str:
         self.clips.append(clip)
         return self.transcripts.pop(0) if self.transcripts else ""
+
+    async def warmup(self) -> None:
+        self.warmups += 1
 
 
 class FakeTts:

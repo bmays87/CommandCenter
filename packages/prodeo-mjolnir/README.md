@@ -49,6 +49,35 @@ Use a full drive-letter path (`C:/...`) in `voice_path` — POSIX-style
 `/c/...` paths fail on Windows. Forward slashes are fine and avoid JSON
 escaping.
 
+The STT model is pre-loaded in the background at startup, so the first command
+after boot is no slower than the rest (before, command #1 paid the whole model
+load).
+
+## Tuning responsiveness
+
+If Mjölnir keeps saying **"I didn't catch that"** (without repeating what you
+said) or is **slow to respond**, the energy-VAD threshold is mistuned for your
+mic and room — not the intent grammar. The endpointer treats a frame as speech
+only when its loudness clears `MJOLNIR_VAD_THRESHOLD` (default `300`):
+
+- **Threshold too high** (quiet or distant mic): speech never registers, so it
+  waits out the leading-silence ceiling (~5 s) and gives up — hence the delay
+  and the "didn't catch that" with nothing transcribed.
+- **Threshold too low** (noisy room): an utterance never ends, so it records to
+  the max-command ceiling (`MJOLNIR_MAX_COMMAND_S`, default 12 s) every time and
+  transcribes mostly noise.
+
+Run the calibrator to get the right number for your setup — it measures the
+room, then measures your voice, and prints the value to set:
+
+```bash
+prodeo-mjolnir --calibrate
+```
+
+Related knobs (all `MJOLNIR_`-prefixed): `VAD_THRESHOLD`, `VAD_SILENCE_MS`
+(silence that ends an utterance, default 800), `MAX_COMMAND_S`,
+`WAKE_THRESHOLD`.
+
 Configuration is environment variables with the `MJOLNIR_` prefix — see
 `prodeo_mjolnir/config.py` for the full list. Highlights:
 

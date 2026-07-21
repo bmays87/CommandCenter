@@ -5,6 +5,7 @@ server's ``server.py`` rule): engines from plugins, PortAudio I/O, the
 server client, cache, handlers, composer, pipeline.
 """
 
+import argparse
 import asyncio
 import contextlib
 import signal
@@ -14,6 +15,7 @@ import structlog
 from prodeo.logging import configure_logging
 from prodeo_mjolnir.audio import SoundDeviceSink, SoundDeviceSource
 from prodeo_mjolnir.cache import LocalCache
+from prodeo_mjolnir.calibrate import run_calibration
 from prodeo_mjolnir.client import ServerClient
 from prodeo_mjolnir.composer import ResponseComposer
 from prodeo_mjolnir.config import MjolnirSettings
@@ -78,7 +80,23 @@ async def run(settings: MjolnirSettings | None = None) -> None:
         _log.info("mjolnir.stopped")
 
 
+async def calibrate(settings: MjolnirSettings | None = None) -> None:
+    """Measure the microphone and recommend ``MJOLNIR_VAD_THRESHOLD``."""
+    settings = settings or MjolnirSettings()
+    configure_logging(settings.log_level)
+    source = SoundDeviceSource(sample_rate=settings.sample_rate, frame_ms=settings.frame_ms)
+    await run_calibration(source)
+
+
 def main() -> None:
     """Console entry point: ``prodeo-mjolnir``."""
+    parser = argparse.ArgumentParser(prog="prodeo-mjolnir", description="Prodeo voice client")
+    parser.add_argument(
+        "--calibrate",
+        action="store_true",
+        help="measure the mic and recommend MJOLNIR_VAD_THRESHOLD, then exit "
+        "(use this if Mjolnir keeps saying 'I didn't catch that' or is slow to respond)",
+    )
+    args = parser.parse_args()
     with contextlib.suppress(KeyboardInterrupt):
-        asyncio.run(run())
+        asyncio.run(calibrate() if args.calibrate else run())

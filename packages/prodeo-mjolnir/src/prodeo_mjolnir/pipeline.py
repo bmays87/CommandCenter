@@ -28,7 +28,13 @@ from prodeo_mjolnir.cache import LocalCache
 from prodeo_mjolnir.client import ServerClient
 from prodeo_mjolnir.composer import ResponseComposer
 from prodeo_mjolnir.config import MjolnirSettings
-from prodeo_mjolnir.engines import AudioClip, SpeechToText, TextToSpeech, WakeWordDetector
+from prodeo_mjolnir.engines import (
+    AudioClip,
+    SpeechToText,
+    TextToSpeech,
+    WakeWordDetector,
+    Warmable,
+)
 from prodeo_mjolnir.handlers import CommandHandlers, speakable_name
 from prodeo_mjolnir.intents import IntentRouter
 
@@ -80,6 +86,10 @@ class VoicePipeline:
             asyncio.create_task(self._heartbeat(), name="mjolnir-heartbeat"),
             asyncio.create_task(self._speak_notifications(), name="mjolnir-notify"),
         ]
+        # Load the STT model now, in the background, so the *first* command
+        # doesn't pay the cold-start; listening starts immediately regardless.
+        if isinstance(self._stt, Warmable):
+            self._tasks.append(asyncio.create_task(self._warmup(), name="mjolnir-warmup"))
         _log.info(
             "pipeline.started",
             wakeword=self._wakeword.name,
@@ -142,6 +152,15 @@ class VoicePipeline:
                 clip, heard = endpointer.clip(), endpointer.heard_speech
                 endpointer = None
                 await self._handle_utterance(clip, heard, correlation_id)
+
+    async def _warmup(self) -> None:
+        """Pre-load the STT model (contained: a failure just means lazy load)."""
+        assert isinstance(self._stt, Warmable)
+        try:
+            await self._stt.warmup()
+            _log.info("pipeline.stt_warmed", stt=self._stt.name)
+        except Exception:
+            _log.warning("pipeline.stt_warmup_failed", stt=self._stt.name, exc_info=True)
 
     def _new_endpointer(self) -> Endpointer:
         return Endpointer(
