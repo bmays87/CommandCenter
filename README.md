@@ -30,6 +30,15 @@ uv sync --all-groups
 PRODEO_API_TOKEN=change-me uv run prodeo-server
 ```
 
+Windows (PowerShell):
+
+```powershell
+uv sync --all-groups
+cd dashboard; npm install; npm run build; cd ..   # optional: the web UI
+$env:PRODEO_API_TOKEN = "change-me"
+uv run prodeo-server
+```
+
 Open `http://127.0.0.1:8600`, enter your token, and any Claude Code session on the
 machine (live or historical) appears in the fleet view. The REST API lives under
 `/api` (`/api/health`, `/api/sessions`, `/api/events`) with a WebSocket event
