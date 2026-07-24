@@ -30,8 +30,10 @@ NEUTRAL: dict[str, str] = {
     "pending_none": "Nothing is waiting on you{honorific}.",
     "pending_one": "One thing needs you{honorific}. {adapter} on {name} asks: {title}.",
     "pending_many": "{count} things need you{honorific}. First: {adapter} on {name} asks: {title}.",
+    "pending_list": "{count} things need you{honorific}. {items}",
     "approved": "Approved{honorific}.",
     "denied": "Denied{honorific}.",
+    "responded": "Answered{honorific}.",
     "stopped": "{name} has been stopped{honorific}.",
     "already_resolved": "That was already answered elsewhere{honorific}.",
     "not_found": "I couldn't find anything matching {query}{honorific}.",
@@ -68,8 +70,10 @@ STEWARD: dict[str, str] = {
     "pending_many": (
         "{count} matters require you{honorific}. The first: {adapter} on {name} asks: {title}."
     ),
+    "pending_list": "{count} matters require you{honorific}. {items}",
     "approved": "As you wish{honorific}. The permission has been granted.",
     "denied": "As you wish{honorific}. The request has been declined.",
+    "responded": "As you wish{honorific}. Your reply has been sent.",
     "stopped": "As you wish{honorific}. {name} has been terminated.",
     "already_resolved": "It appears someone attended to that already{honorific}.",
     "cancelled": "Of course{honorific}.",

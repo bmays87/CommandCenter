@@ -45,10 +45,28 @@ stays lightweight. The voice client works CPU-only out of the box.
 
 ## Intent Handling
 
-v1 intents are **deterministic** (pattern/grammar based): "status", "what happened
-overnight", "approve the permission for <session>", "stop <session>". An LLM-based
-intent router is a plugin upgrade, not a prerequisite — deterministic intents keep
-latency low and behavior predictable, and they work fully offline.
+Intents route through a `Router` seam with two implementations behind it:
+
+1. **Deterministic grammar (default, always first).** Pattern/grammar based:
+   "status", "what happened overnight", "approve the permission for <session>",
+   "stop <session>", and numbered answering — "you have two: … approve number
+   two", "respond to one with <text>". Instant, predictable, fully offline.
+2. **Constrained LLM classifier (optional fallback).** With
+   `MJOLNIR_INTENT_ROUTER=llm`, an Ollama model is consulted **only** when the
+   grammar returns `UnknownIntent`, so known phrasings never pay LLM latency.
+   The model is a *classifier over a closed intent set, never an executor*: it
+   picks one frozen intent (plus a free-text target *hint*), can emit nothing
+   outside an allowlist (`MJOLNIR_LLM_INTENTS`, read-only by default), and fails
+   closed to "didn't understand" if Ollama is unreachable, slow, or malformed.
+   Target resolution and the ambiguity guard stay in the handlers against live
+   data — the LLM never names an id. See
+   [ADR-0012](../adr/0012-llm-intent-router.md).
+
+**Echo suppression.** The pipeline is half-duplex — it does not listen while
+speaking — but a real mic keeps buffering during playback, so TTS can bleed
+speaker→mic and self-trigger the wake word. After every spoken response Mjölnir
+drains those buffered frames, resets the wake detector, and mutes wake scoring
+for `MJOLNIR_ECHO_COOLDOWN_S` (default 0.4 s) so it cannot hear itself.
 
 ## Persona
 

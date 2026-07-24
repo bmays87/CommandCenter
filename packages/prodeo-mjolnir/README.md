@@ -75,8 +75,13 @@ prodeo-mjolnir --calibrate
 ```
 
 Related knobs (all `MJOLNIR_`-prefixed): `VAD_THRESHOLD`, `VAD_SILENCE_MS`
-(silence that ends an utterance, default 800), `MAX_COMMAND_S`,
+(silence that ends an utterance, default 1000), `MAX_COMMAND_S`,
 `WAKE_THRESHOLD`.
+
+If Mjölnir **re-triggers on its own speech** (its reply wakes it again), the mic
+is hearing the speaker. The pipeline drains buffered mic frames and mutes wake
+scoring for `MJOLNIR_ECHO_COOLDOWN_S` (default 0.4 s) after every reply; raise it
+for a louder speaker or a more echoey room.
 
 Configuration is environment variables with the `MJOLNIR_` prefix — see
 `prodeo_mjolnir/config.py` for the full list. Highlights:
@@ -92,9 +97,29 @@ Configuration is environment variables with the `MJOLNIR_` prefix — see
 - `MJOLNIR_SPEAK_NOTIFICATIONS` — `attentive` (default) | `always` | `never`.
 - `MJOLNIR_ENGINES` — per-engine JSON config, e.g.
   `'{"piper": {"voice_path": "/opt/voices/en_GB-alan-medium.onnx"}}'`.
+- `MJOLNIR_INTENT_ROUTER` — `patterns` (default, deterministic + offline) or
+  `llm` to add a constrained Ollama classifier consulted only when the grammar
+  doesn't recognize a phrasing (ADR-0012). `llm` mode requires a reachable
+  Ollama (`ollama serve` + `ollama pull <model>`).
+- `MJOLNIR_LLM_ROUTER_BASE_URL` (default `http://localhost:11434`),
+  `MJOLNIR_LLM_ROUTER_MODEL` (default `llama3.2`),
+  `MJOLNIR_LLM_ROUTER_TIMEOUT_S` (default `4`) — the LLM router's Ollama
+  endpoint, model, and per-call timeout.
+- `MJOLNIR_LLM_INTENTS` — the closed set of intents the LLM may emit (JSON
+  list). Defaults to the read-only set
+  `["status","pending","overnight","help","cancel"]`; add `approve`, `deny`, or
+  `stop` to let it classify actions too. Anything outside this set is dropped.
+- `MJOLNIR_ECHO_COOLDOWN_S` — post-speech wake-word mute window (default 0.4 s).
 
 ## What you can say
 
-"Status", "what happened overnight" (or "good morning"), "anything need
-me?", "approve it" / "approve the permission for <project>", "deny it",
-"stop <project>", "help", "never mind".
+"Status" (or "do I have any running sessions"), "what happened overnight" (or
+"good morning"), "anything need me?" / "any dialogs waiting for answers",
+"approve it" / "approve the permission for <project>", "deny it", "stop
+<project>", "help", "never mind".
+
+**Numbered answering.** When several things are waiting, Mjölnir enumerates them
+("Two things need you. One: … Two: …"). Answer by position: "approve number
+two", "deny the first one", or reply in free text with "respond to one with
+looks good" / "tell two go ahead". Positions resolve against exactly what was
+just read out.

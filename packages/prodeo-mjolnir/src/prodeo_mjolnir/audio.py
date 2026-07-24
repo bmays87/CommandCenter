@@ -26,6 +26,20 @@ class AudioSource(Protocol):
 
 
 @runtime_checkable
+class Drainable(Protocol):
+    """Optional capability: discard mic frames buffered during playback.
+
+    A source that queues frames off a hardware callback keeps filling that
+    queue *while Mjölnir speaks*; the pipeline calls :meth:`drain` after every
+    spoken response so it doesn't consume its own TTS as the next command.
+    Sources that can't buffer (test fakes) simply don't implement it and the
+    pipeline's ``isinstance`` guard skips them.
+    """
+
+    def drain(self) -> None: ...
+
+
+@runtime_checkable
 class AudioSink(Protocol):
     """Plays one clip to completion (the pipeline is half-duplex on purpose:
     not listening while speaking avoids hearing ourselves)."""
@@ -100,16 +114,28 @@ class SoundDeviceSource:
     def __init__(self, *, sample_rate: int = SAMPLE_RATE, frame_ms: int = 80) -> None:
         self._sample_rate = sample_rate
         self._frame_samples = sample_rate * frame_ms // 1000
+        # Hoisted so :meth:`drain` can empty it between the callback (which keeps
+        # filling during playback) and the listen loop.
+        self._queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=64)
 
     @property
     def sample_rate(self) -> int:
         return self._sample_rate
 
+    def drain(self) -> None:
+        """Discard every frame buffered so far (non-blocking). Called right
+        after Mjölnir speaks so echo captured during playback is thrown away."""
+        while True:
+            try:
+                self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+
     async def stream(self) -> AsyncIterator[bytes]:
         import sounddevice  # heavy/optional: imported only when a real mic is used
 
         loop = asyncio.get_running_loop()
-        queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=64)
+        queue = self._queue
 
         # indata is a CFFI buffer from PortAudio; typed Any because sounddevice
         # ships no stubs and the buffer protocol is all we rely on.

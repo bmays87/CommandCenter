@@ -20,6 +20,8 @@ from prodeo_mjolnir.client import ServerClient
 from prodeo_mjolnir.composer import ResponseComposer
 from prodeo_mjolnir.config import MjolnirSettings
 from prodeo_mjolnir.handlers import CommandHandlers
+from prodeo_mjolnir.intents import IntentRouter, Router
+from prodeo_mjolnir.llm_router import LlmIntentRouter
 from prodeo_mjolnir.packs import load_pack
 from prodeo_mjolnir.pipeline import VoicePipeline
 from prodeo_mjolnir.plugins import load_engines
@@ -56,8 +58,23 @@ def build_pipeline(settings: MjolnirSettings) -> tuple[VoicePipeline, ServerClie
         cache=cache,
         handlers=handlers,
         composer=composer,
+        router=_build_router(settings),
     )
     return pipeline, client
+
+
+def _build_router(settings: MjolnirSettings) -> Router:
+    """Deterministic grammar by default; the constrained LLM fallback on demand."""
+    base = IntentRouter()
+    if settings.intent_router != "llm":
+        return base
+    return LlmIntentRouter(
+        base=base,
+        base_url=settings.llm_router_base_url,
+        model=settings.llm_router_model,
+        allowed=set(settings.llm_intents),
+        timeout_s=settings.llm_router_timeout_s,
+    )
 
 
 async def run(settings: MjolnirSettings | None = None) -> None:

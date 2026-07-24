@@ -3,7 +3,7 @@
 import array
 import math
 
-from prodeo_mjolnir.audio import Endpointer, rms
+from prodeo_mjolnir.audio import Drainable, Endpointer, SoundDeviceSource, rms
 from prodeo_mjolnir.engines import SAMPLE_RATE
 
 FRAME_MS = 80
@@ -61,3 +61,16 @@ def test_no_speech_times_out_without_hearing() -> None:
     assert not ep.add(SILENCE)
     assert ep.add(SILENCE)
     assert not ep.heard_speech
+
+
+def test_sound_device_source_drain_empties_buffered_frames() -> None:
+    source = SoundDeviceSource(sample_rate=SAMPLE_RATE, frame_ms=FRAME_MS)
+    assert isinstance(source, Drainable)  # advertises the optional capability
+    for _ in range(5):
+        source._queue.put_nowait(SPEECH)
+    assert source._queue.qsize() == 5
+
+    source.drain()
+    assert source._queue.qsize() == 0
+    source.drain()  # draining an empty queue is a no-op, never blocks
+    assert source._queue.qsize() == 0

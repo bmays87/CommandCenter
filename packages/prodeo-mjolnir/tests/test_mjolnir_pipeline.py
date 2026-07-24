@@ -8,6 +8,7 @@ from mjolnir_fakes import (
     SILENCE_FRAME,
     SPEECH_FRAME,
     WAKE_FRAME,
+    DrainableSource,
     FakeServerClient,
     FakeSink,
     FakeStt,
@@ -21,6 +22,7 @@ from mjolnir_fakes import (
 
 from prodeo.events import new_event
 from prodeo.events import types as ev
+from prodeo_mjolnir.audio import AudioSource
 from prodeo_mjolnir.cache import LocalCache
 from prodeo_mjolnir.composer import ResponseComposer
 from prodeo_mjolnir.config import MjolnirSettings
@@ -43,7 +45,7 @@ def _settings(**overrides: object) -> MjolnirSettings:
 
 def _pipeline(
     client: FakeServerClient,
-    source: ScriptedSource,
+    source: AudioSource,
     transcripts: list[str],
     **overrides: object,
 ) -> tuple[VoicePipeline, FakeTts, FakeSink, FakeStt]:
@@ -208,3 +210,61 @@ async def test_notification_modes_always_and_never() -> None:
     await settle()
     await pipeline2.stop()
     assert all("completed" not in t for t in tts2.texts)
+
+
+def _wakes(client: FakeServerClient) -> int:
+    return sum(1 for e in client.voice_events if e.type == ev.VOICE_WAKE_WORD_DETECTED)
+
+
+@pytest.mark.asyncio
+async def test_echo_cooldown_suppresses_self_trigger() -> None:
+    """After Mjölnir speaks, wake frames arriving inside the cooldown window
+    (its own TTS bleeding speaker->mic) must not open a second exchange."""
+    client = FakeServerClient()
+    client.sessions = [make_session("s1", title="nightly-refactor")]
+    # One real exchange, then an echo burst that looks like a wake + command.
+    frames = [*EXCHANGE, WAKE_FRAME, SPEECH_FRAME, SPEECH_FRAME, SILENCE_FRAME, SILENCE_FRAME]
+    pipeline, _, _, stt = _pipeline(
+        client,
+        ScriptedSource(frames),  # no drain(): only the cooldown can suppress
+        ["status", "SHOULD NOT RUN"],
+        echo_cooldown_s=5.0,
+    )
+
+    await pipeline.start()
+    await settle()
+    await pipeline.stop()
+
+    assert _wakes(client) == 1  # the echo never counted as a wake
+    assert len(stt.clips) == 1  # and never reached transcription
+    assert stt.transcripts == ["SHOULD NOT RUN"]  # second transcript untouched
+
+
+@pytest.mark.asyncio
+async def test_drain_discards_buffered_echo() -> None:
+    """Frames the mic buffered during playback are drained, not consumed as
+    the next command - isolated here with the cooldown disabled."""
+    client = FakeServerClient()
+    client.sessions = [make_session("s1", title="nightly-refactor")]
+    source = DrainableSource(
+        # command exchange, then echo buffered during the reply
+        [
+            WAKE_FRAME,
+            SPEECH_FRAME,
+            SPEECH_FRAME,
+            SILENCE_FRAME,
+            SILENCE_FRAME,
+            WAKE_FRAME,
+            WAKE_FRAME,
+            WAKE_FRAME,
+        ]
+    )
+    pipeline, _, _, stt = _pipeline(client, source, ["status"], echo_cooldown_s=0.0)
+
+    await pipeline.start()
+    await settle()
+    await pipeline.stop()
+
+    assert source.drained == 3  # the buffered echo frames were thrown away
+    assert _wakes(client) == 1
+    assert len(stt.clips) == 1

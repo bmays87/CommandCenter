@@ -11,6 +11,7 @@ from prodeo_mjolnir.intents import (
     DenyIntent,
     OvernightIntent,
     PendingIntent,
+    RespondIntent,
     StatusIntent,
     StopIntent,
     UnknownIntent,
@@ -161,3 +162,94 @@ async def test_unknown_echoes_the_transcript() -> None:
     handlers = await _handlers(FakeServerClient())
     text = await handlers.handle(UnknownIntent(text="make me a sandwich"))
     assert text == "Sorry, sir, I didn't understand: make me a sandwich."
+
+
+@pytest.mark.asyncio
+async def test_pending_enumerates_all_with_ordinals() -> None:
+    client = FakeServerClient()
+    client.sessions = [
+        make_session("s1", project="/repos/db"),
+        make_session("s2", project="/repos/api"),
+    ]
+    client.interactions = [
+        make_interaction("i1", "s1", title="Run the migration?"),
+        make_interaction("i2", "s2", title="Delete fixtures?"),
+    ]
+    handlers = await _handlers(client)
+
+    text = await handlers.handle(PendingIntent())
+    assert text == (
+        "2 things need you, sir. "
+        "One: claude-code on db asks: Run the migration? "
+        "Two: claude-code on api asks: Delete fixtures?"
+    )
+
+
+@pytest.mark.asyncio
+async def test_positional_answer_targets_the_announced_item() -> None:
+    client = FakeServerClient()
+    client.sessions = [
+        make_session("s1", project="/repos/db"),
+        make_session("s2", project="/repos/api"),
+    ]
+    client.interactions = [
+        make_interaction("i1", "s1", title="Run the migration?"),
+        make_interaction("i2", "s2", title="Delete fixtures?"),
+    ]
+    handlers = await _handlers(client)
+
+    await handlers.handle(PendingIntent())  # announce the ordering first
+    assert await handlers.handle(ApproveIntent(target="#2")) == "Approved, sir."
+    assert await handlers.handle(DenyIntent(target="#1")) == "Denied, sir."
+    assert client.answered == [("i2", "allow"), ("i1", "deny")]
+
+    # a position past the end is a clean "not found", not a mis-answer
+    assert "couldn't find" in await handlers.handle(ApproveIntent(target="#5"))
+
+
+@pytest.mark.asyncio
+async def test_positional_falls_back_to_current_pending_when_unannounced() -> None:
+    client = FakeServerClient()
+    client.sessions = [make_session("s1", project="/repos/db")]
+    client.interactions = [make_interaction("i1", "s1", title="Run it?")]
+    handlers = await _handlers(client)
+
+    # no prior announcement: #1 resolves against the current sorted pending
+    assert await handlers.handle(ApproveIntent(target="#1")) == "Approved, sir."
+    assert client.answered == [("i1", "allow")]
+
+
+@pytest.mark.asyncio
+async def test_respond_posts_free_text_answer() -> None:
+    client = FakeServerClient()
+    client.sessions = [make_session("s1", project="/repos/db")]
+    client.interactions = [make_interaction("i1", "s1", title="Which branch?")]
+    handlers = await _handlers(client)
+
+    assert await handlers.handle(RespondIntent(text="the main branch")) == "Answered, sir."
+    assert client.answered == [("i1", None)]  # a text answer, no allow/deny decision
+    assert client.answered_text == [("i1", "the main branch")]
+
+
+@pytest.mark.asyncio
+async def test_respond_by_position_after_announcement() -> None:
+    client = FakeServerClient()
+    client.sessions = [
+        make_session("s1", project="/repos/db"),
+        make_session("s2", project="/repos/api"),
+    ]
+    client.interactions = [
+        make_interaction("i1", "s1", title="Which branch?"),
+        make_interaction("i2", "s2", title="How many workers?"),
+    ]
+    handlers = await _handlers(client)
+
+    await handlers.handle(PendingIntent())
+    assert await handlers.handle(RespondIntent(target="#2", text="four")) == "Answered, sir."
+    assert client.answered_text == [("i2", "four")]
+
+    # already answered elsewhere: reported, never a false success
+    client.already_resolved.add("i1")
+    assert await handlers.handle(RespondIntent(target="#1", text="main")) == (
+        "That was already answered elsewhere, sir."
+    )

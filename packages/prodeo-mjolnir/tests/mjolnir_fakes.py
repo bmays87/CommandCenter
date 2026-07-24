@@ -2,6 +2,7 @@
 
 import array
 import asyncio
+from collections import deque
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
@@ -82,6 +83,7 @@ class FakeServerClient:
         self.interactions: list[Interaction] = []
         self.already_resolved: set[str] = set()
         self.answered: list[tuple[str, str | None]] = []
+        self.answered_text: list[tuple[str, str]] = []
         self.terminated: list[str] = []
         self.voice_events: list[Event] = []
         self.presence_reports: list[bool] = []
@@ -108,6 +110,8 @@ class FakeServerClient:
         if interaction_id in self.already_resolved:
             raise AlreadyResolvedError(interaction_id)
         self.answered.append((interaction_id, decision))
+        if text:
+            self.answered_text.append((interaction_id, text))
         return next(i for i in self.interactions if i.id == interaction_id)
 
     async def terminate(self, session_id: str) -> None:
@@ -238,4 +242,26 @@ class ScriptedSource:
     async def stream(self) -> AsyncIterator[bytes]:
         for item in self.frames:
             yield item
+            await asyncio.sleep(0)
+
+
+class DrainableSource:
+    """A ``Drainable`` source: frames wait in a queue ``drain()`` can empty,
+    modeling a mic that keeps buffering (echo) during playback."""
+
+    def __init__(self, frames: list[bytes]) -> None:
+        self._frames = deque(frames)
+        self.drained = 0
+
+    @property
+    def sample_rate(self) -> int:
+        return SAMPLE_RATE
+
+    def drain(self) -> None:
+        self.drained += len(self._frames)
+        self._frames.clear()
+
+    async def stream(self) -> AsyncIterator[bytes]:
+        while self._frames:
+            yield self._frames.popleft()
             await asyncio.sleep(0)

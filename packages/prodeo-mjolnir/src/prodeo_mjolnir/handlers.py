@@ -25,6 +25,7 @@ from prodeo_mjolnir.intents import (
     Intent,
     OvernightIntent,
     PendingIntent,
+    RespondIntent,
     StatusIntent,
     StopIntent,
     UnknownIntent,
@@ -32,6 +33,29 @@ from prodeo_mjolnir.intents import (
 )
 
 _log = structlog.get_logger(__name__)
+
+#: Positions read out loud, indexed 1..N (index 0 unused).
+_ORDINAL_NAMES = (
+    "",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+    "Ten",
+)
+
+#: A ``#N`` positional target produced by the ordinal grammar.
+_POSITIONAL = re.compile(r"#(\d+)")
+
+
+def _ordinal_name(index: int) -> str:
+    """ "One", "Two", ... or "Number 11" past the spelled-out range."""
+    return _ORDINAL_NAMES[index] if index < len(_ORDINAL_NAMES) else f"Number {index}"
 
 
 def speakable_name(session: Session | None) -> str:
@@ -65,6 +89,9 @@ class CommandHandlers:
         self._client = client
         self._composer = composer
         self._overnight_hours = overnight_hours
+        #: The pending interactions as last read out, so "approve number two"
+        #: resolves against exactly what the user heard (not a since-changed list).
+        self._last_pending: list[Interaction] = []
 
     async def handle(self, intent: Intent) -> str:
         """Execute one intent; failures become the ``error`` template."""
@@ -86,6 +113,8 @@ class CommandHandlers:
                 return await self._resolve(target, decision="allow", key="approved")
             case DenyIntent(target=target):
                 return await self._resolve(target, decision="deny", key="denied")
+            case RespondIntent(target=target, text=text):
+                return await self._respond(target, text)
             case StopIntent(target=target):
                 return await self._stop(target)
             case HelpIntent():
@@ -153,17 +182,26 @@ class CommandHandlers:
 
     def _pending(self) -> str:
         pending = self._cache.pending_interactions()
+        # Remember the announced ordering so a positional "approve number two"
+        # (or a later "respond to one ...") resolves against what was read out.
+        self._last_pending = list(pending)
         if not pending:
             return self._composer.compose("pending_none")
-        first = pending[0]
-        key = "pending_one" if len(pending) == 1 else "pending_many"
-        return self._composer.compose(
-            key,
-            count=len(pending),
-            adapter=first.adapter,
-            name=speakable_name(self._cache.session(first.session_id)),
-            title=first.title,
+        if len(pending) == 1:
+            first = pending[0]
+            return self._composer.compose(
+                "pending_one",
+                count=1,
+                adapter=first.adapter,
+                name=speakable_name(self._cache.session(first.session_id)),
+                title=first.title,
+            )
+        items = " ".join(
+            f"{_ordinal_name(idx)}: {i.adapter} on "
+            f"{speakable_name(self._cache.session(i.session_id))} asks: {i.title}."
+            for idx, i in enumerate(pending, start=1)
         )
+        return self._composer.compose("pending_list", count=len(pending), items=items)
 
     # ------------------------------------------------------------- commands
 
@@ -186,6 +224,25 @@ class CommandHandlers:
             return self._composer.compose("already_resolved")
         return self._composer.compose(key)
 
+    async def _respond(self, target: str, text: str) -> str:
+        """Free-text answer to a question-kind interaction (RespondIntent)."""
+        pending = self._cache.pending_interactions()
+        if not pending:
+            return self._composer.compose("pending_none")
+        matches = self._match_interactions(pending, target) if target else pending
+        if not matches:
+            return self._composer.compose("not_found", query=target)
+        if len(matches) > 1:
+            if target:
+                return self._composer.compose("ambiguous", count=len(matches), query=target)
+            return self._pending()  # "respond ..." with several pending and no target
+        interaction = matches[0]
+        try:
+            await self._client.answer(interaction.id, text=text)
+        except AlreadyResolvedError:
+            return self._composer.compose("already_resolved")
+        return self._composer.compose("responded")
+
     async def _stop(self, target: str) -> str:
         active = self._cache.active_sessions()
         matches = self._match_sessions(active, target) if target else active
@@ -202,6 +259,15 @@ class CommandHandlers:
     # ------------------------------------------------------------- matching
 
     def _match_interactions(self, pending: list[Interaction], target: str) -> list[Interaction]:
+        position = self._positional(target)
+        if position is not None:
+            # Resolve "#N" against exactly what was read out; if nothing has
+            # been announced yet, fall back to the current sorted pending.
+            source = self._last_pending or pending
+            live = {i.id for i in pending}
+            if 1 <= position <= len(source) and source[position - 1].id in live:
+                return [source[position - 1]]
+            return []
         needle = normalize(target)
         out: list[Interaction] = []
         for interaction in pending:
@@ -220,6 +286,12 @@ class CommandHandlers:
             for s in sessions
             if self._hit(needle, [speakable_name(s), s.project, s.title, s.adapter])
         ]
+
+    @staticmethod
+    def _positional(target: str) -> int | None:
+        """The 1-based position in a ``#N`` positional target, else None."""
+        match = _POSITIONAL.fullmatch(target.strip())
+        return int(match.group(1)) if match else None
 
     @staticmethod
     def _hit(needle: str, haystacks: list[str]) -> bool:

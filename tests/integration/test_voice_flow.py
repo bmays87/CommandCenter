@@ -104,6 +104,10 @@ async def test_morning_scenario_end_to_end(tmp_path: Path) -> None:
             ack_enabled=False,
             vad_silence_ms=160,
             heartbeat_interval_s=0.05,
+            # FakeSink plays instantly, so the two scripted exchanges are
+            # back-to-back in wall time; disable the post-speech echo cooldown
+            # that would otherwise swallow the second (genuine) wake here.
+            echo_cooldown_s=0.0,
         )
         client = ServerClient(base_url, api_token=TOKEN, client_id="mjolnir", node="kitchen-pi")
         cache = LocalCache(client)

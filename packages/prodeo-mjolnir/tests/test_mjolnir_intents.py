@@ -11,6 +11,7 @@ from prodeo_mjolnir.intents import (
     IntentRouter,
     OvernightIntent,
     PendingIntent,
+    RespondIntent,
     StatusIntent,
     StopIntent,
     UnknownIntent,
@@ -30,10 +31,16 @@ router = IntentRouter()
         "how are my agents",
         "what's happening",
         "what is running",
+        # natural phrasings that used to fall through to UnknownIntent
+        "do I have any running sessions",
+        "do I have any active sessions",
+        "are there any running agents",
+        "which sessions are running",
     ],
 )
-def test_status_phrasings(text: str) -> None:
-    assert router.route(text) == StatusIntent()
+@pytest.mark.asyncio
+async def test_status_phrasings(text: str) -> None:
+    assert await router.route(text) == StatusIntent()
 
 
 @pytest.mark.parametrize(
@@ -49,8 +56,9 @@ def test_status_phrasings(text: str) -> None:
         "give me the overnight report",
     ],
 )
-def test_overnight_phrasings(text: str) -> None:
-    assert router.route(text) == OvernightIntent()
+@pytest.mark.asyncio
+async def test_overnight_phrasings(text: str) -> None:
+    assert await router.route(text) == OvernightIntent()
 
 
 @pytest.mark.parametrize(
@@ -61,10 +69,16 @@ def test_overnight_phrasings(text: str) -> None:
         "any permissions waiting",
         "what needs me",
         "anything needs my attention",
+        # natural phrasings that used to fall through to UnknownIntent
+        "any dialogs waiting for answers",
+        "are there any prompts waiting",
+        "anything waiting for a response",
+        "what's waiting on me",
     ],
 )
-def test_pending_phrasings(text: str) -> None:
-    assert router.route(text) == PendingIntent()
+@pytest.mark.asyncio
+async def test_pending_phrasings(text: str) -> None:
+    assert await router.route(text) == PendingIntent()
 
 
 @pytest.mark.parametrize(
@@ -86,8 +100,42 @@ def test_pending_phrasings(text: str) -> None:
         ("block it", DenyIntent()),
     ],
 )
-def test_approve_deny_with_targets(text: str, intent: Intent) -> None:
-    assert router.route(text) == intent
+@pytest.mark.asyncio
+async def test_approve_deny_with_targets(text: str, intent: Intent) -> None:
+    assert await router.route(text) == intent
+
+
+@pytest.mark.parametrize(
+    ("text", "intent"),
+    [
+        ("approve number two", ApproveIntent(target="#2")),
+        ("approve the first one", ApproveIntent(target="#1")),
+        ("approve one", ApproveIntent(target="#1")),
+        ("approve number 3", ApproveIntent(target="#3")),
+        ("deny the second one", DenyIntent(target="#2")),
+        ("deny number two", DenyIntent(target="#2")),
+    ],
+)
+@pytest.mark.asyncio
+async def test_positional_approve_deny(text: str, intent: Intent) -> None:
+    assert await router.route(text) == intent
+
+
+@pytest.mark.parametrize(
+    ("text", "intent"),
+    [
+        ("respond to two with looks good", RespondIntent(target="#2", text="looks good")),
+        ("respond to one saying ship it", RespondIntent(target="#1", text="ship it")),
+        ("tell one looks good", RespondIntent(target="#1", text="looks good")),
+        (
+            "respond to the database migration with go ahead",
+            RespondIntent(target="database migration", text="go ahead"),
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_respond_free_text(text: str, intent: Intent) -> None:
+    assert await router.route(text) == intent
 
 
 @pytest.mark.parametrize(
@@ -99,18 +147,20 @@ def test_approve_deny_with_targets(text: str, intent: Intent) -> None:
         ("stop", StopIntent()),
     ],
 )
-def test_stop_targets(text: str, intent: Intent) -> None:
-    assert router.route(text) == intent
+@pytest.mark.asyncio
+async def test_stop_targets(text: str, intent: Intent) -> None:
+    assert await router.route(text) == intent
 
 
-def test_meta_and_unknown() -> None:
-    assert router.route("help") == HelpIntent()
-    assert router.route("what can you do") == HelpIntent()
-    assert router.route("never mind") == CancelIntent()
-    assert router.route("cancel") == CancelIntent()
-    assert router.route("make me a sandwich") == UnknownIntent(text="make me a sandwich")
-    assert router.route("") == UnknownIntent(text="")
-    assert router.route("...") == UnknownIntent(text="...")
+@pytest.mark.asyncio
+async def test_meta_and_unknown() -> None:
+    assert await router.route("help") == HelpIntent()
+    assert await router.route("what can you do") == HelpIntent()
+    assert await router.route("never mind") == CancelIntent()
+    assert await router.route("cancel") == CancelIntent()
+    assert await router.route("make me a sandwich") == UnknownIntent(text="make me a sandwich")
+    assert await router.route("") == UnknownIntent(text="")
+    assert await router.route("...") == UnknownIntent(text="...")
 
 
 def test_normalize_strips_punctuation_and_case() -> None:

@@ -44,8 +44,25 @@ class MjolnirSettings(BaseSettings):
     #: Per-frame loudness (RMS) above which a frame counts as speech. This is
     #: mic- and room-specific; run ``prodeo-mjolnir --calibrate`` to find yours.
     vad_threshold: float = 300.0
-    vad_silence_ms: int = 800
+    vad_silence_ms: int = 1000
     max_command_s: float = 12.0
+    #: After Mjölnir speaks, discard mic frames buffered during playback and
+    #: refuse to score the wake word for this long, so TTS bleeding
+    #: speaker->mic can't self-trigger (half-duplex echo guard).
+    echo_cooldown_s: float = 0.4
+
+    # Intent routing
+    #: ``patterns`` = deterministic offline grammar only (default). ``llm`` adds
+    #: a constrained Ollama classifier consulted *only* when the grammar returns
+    #: UnknownIntent (see docs/adr/0012-llm-intent-router.md).
+    intent_router: Literal["patterns", "llm"] = "patterns"
+    llm_router_base_url: str = "http://localhost:11434"
+    llm_router_model: str = "llama3.2"
+    #: Bound on one classification call; on timeout the utterance is UnknownIntent.
+    llm_router_timeout_s: float = 4.0
+    #: The closed set of intents the LLM may emit. Defaults to read-only
+    #: intents; add ``approve``/``deny``/``stop`` to let it classify actions.
+    llm_intents: list[str] = ["status", "pending", "overnight", "help", "cancel"]
 
     # Persona (see docs/architecture/voice-pipeline.md#persona)
     #: Interpolated into every response template ("sir", "ma'am", a name, or

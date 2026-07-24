@@ -23,7 +23,7 @@ from ulid import ULID
 
 from prodeo.events import Event
 from prodeo.events import types as ev
-from prodeo_mjolnir.audio import AudioSink, AudioSource, Endpointer
+from prodeo_mjolnir.audio import AudioSink, AudioSource, Drainable, Endpointer
 from prodeo_mjolnir.cache import LocalCache
 from prodeo_mjolnir.client import ServerClient
 from prodeo_mjolnir.composer import ResponseComposer
@@ -36,7 +36,7 @@ from prodeo_mjolnir.engines import (
     Warmable,
 )
 from prodeo_mjolnir.handlers import CommandHandlers, speakable_name
-from prodeo_mjolnir.intents import IntentRouter
+from prodeo_mjolnir.intents import IntentRouter, Router
 
 _log = structlog.get_logger(__name__)
 
@@ -57,7 +57,7 @@ class VoicePipeline:
         cache: LocalCache,
         handlers: CommandHandlers,
         composer: ResponseComposer,
-        router: IntentRouter | None = None,
+        router: Router | None = None,
     ) -> None:
         self._settings = settings
         self._wakeword = wakeword
@@ -73,6 +73,9 @@ class VoicePipeline:
         self._tasks: list[asyncio.Task[None]] = []
         self._speak_lock = asyncio.Lock()
         self._attentive_until = 0.0
+        #: While ``monotonic() < mute_until`` the listen loop drains the mic and
+        #: skips wake-word scoring - the echo guard right after Mjölnir speaks.
+        self._mute_until = 0.0
         self._notify_queue: asyncio.Queue[Event] = asyncio.Queue()
 
     # ------------------------------------------------------------ lifecycle
@@ -131,6 +134,13 @@ class VoicePipeline:
         correlation_id = ""
         async for frame in self._source.stream():
             if endpointer is None:
+                # Echo guard: right after speaking, throw away the frames the
+                # mic buffered during playback and don't score them for the
+                # wake word, so Mjölnir can't hear itself and self-trigger.
+                if time.monotonic() < self._mute_until:
+                    self._drain_source()
+                    self._wakeword.reset()
+                    continue
                 score = self._wakeword.process(frame)
                 if score < self._settings.wake_threshold:
                     continue
@@ -193,7 +203,7 @@ class VoicePipeline:
         if not text.strip():
             await self._speak(self._composer.compose("not_heard"), correlation_id)
             return
-        intent = self._router.route(text)
+        intent = await self._router.route(text)
         _log.info("pipeline.intent", text=text, intent=type(intent).__name__)
         response = await self._handlers.handle(intent)
         self._mark_attentive()
@@ -225,6 +235,19 @@ class VoicePipeline:
                     session_id=session_id,
                     correlation_id=correlation_id,
                 )
+            self._suppress_echo()
+
+    def _drain_source(self) -> None:
+        """Discard mic frames buffered during playback, if the source can."""
+        if isinstance(self._source, Drainable):
+            self._source.drain()
+
+    def _suppress_echo(self) -> None:
+        """Post-speech echo guard: drop buffered frames, forget any partial
+        wake-word evidence, and mute wake scoring for ``echo_cooldown_s``."""
+        self._drain_source()
+        self._wakeword.reset()
+        self._mute_until = time.monotonic() + self._settings.echo_cooldown_s
 
     # -------------------------------------------------------- notifications
 
