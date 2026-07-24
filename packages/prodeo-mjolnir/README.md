@@ -19,35 +19,48 @@ Engines are plugins (entry-point group `prodeo.plugins`, kinds `wakeword` /
 reference set above is CPU-only and fully offline.
 
 Piper needs a voice model downloaded once before first run — without it the
-client exits at startup with a `voice_path` validation error:
+client exits at startup with a `voice_path` validation error. Download it to a
+known folder in your home directory (used verbatim in the Run step below):
 
 ```bash
+# Linux/macOS
 python -m piper.download_voices en_GB-alan-medium --data-dir ~/piper-voices
+```
+
+```powershell
+# Windows (PowerShell)
+python -m piper.download_voices en_GB-alan-medium --data-dir "$env:USERPROFILE\piper-voices"
 ```
 
 ## Run
 
-Linux/macOS:
+Linux/macOS — `~` expands, so this is copy-paste ready:
 
 ```bash
 export MJOLNIR_SERVER_URL=http://127.0.0.1:8600
 export MJOLNIR_API_TOKEN=...        # the server's PRODEO_API_TOKEN
-export MJOLNIR_ENGINES='{"piper": {"voice_path": "~/piper-voices/en_GB-alan-medium.onnx"}}'
+export MJOLNIR_ENGINES='{"piper": {"voice_path": "'"$HOME"'/piper-voices/en_GB-alan-medium.onnx"}}'
 prodeo-mjolnir
 ```
 
-Windows (PowerShell):
+Windows (PowerShell) — build the JSON from `$env:USERPROFILE` so you never
+hand-type a path (the single-quoted JSON literal will NOT expand a variable
+inside it, so construct the string first):
 
 ```powershell
 $env:MJOLNIR_SERVER_URL = "http://127.0.0.1:8600"
-$env:MJOLNIR_API_TOKEN = "..."      # the server's PRODEO_API_TOKEN
-$env:MJOLNIR_ENGINES = '{"piper": {"voice_path": "C:/path/to/piper-voices/en_GB-alan-medium.onnx"}}'
+$env:MJOLNIR_API_TOKEN  = "change-me"     # the server's PRODEO_API_TOKEN
+$voice = "$env:USERPROFILE/piper-voices/en_GB-alan-medium.onnx"
+$env:MJOLNIR_ENGINES = "{""piper"": {""voice_path"": ""$voice""}}"
 prodeo-mjolnir
 ```
 
-Use a full drive-letter path (`C:/...`) in `voice_path` — POSIX-style
-`/c/...` paths fail on Windows. Forward slashes are fine and avoid JSON
-escaping.
+> The `voice_path` must be a real, full path to the `.onnx` file you
+> downloaded — Mjölnir loads `<voice_path>` and `<voice_path>.json` beside it.
+> A literal `C:/path/to/...` or `~/piper-voices/...` (unexpanded) fails with
+> `FileNotFoundError: ...en_GB-alan-medium.onnx.json`. On Windows use a
+> drive-letter path with forward slashes (`C:/Users/you/...`); POSIX-style
+> `/c/...` paths do not work.
 
 The STT model is pre-loaded in the background at startup, so the first command
 after boot is no slower than the rest (before, command #1 paid the whole model
