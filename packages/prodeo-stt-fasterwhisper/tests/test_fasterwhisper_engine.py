@@ -1,4 +1,5 @@
-"""faster-whisper engine wrapper: audio conversion, joining, lazy caching.
+"""faster-whisper engine wrapper: audio conversion, joining, lazy caching,
+CUDA auto-detection.
 
 The real faster_whisper library is stubbed via sys.modules so no model
 weights are needed; the wrapper's own logic is what's under test.
@@ -23,8 +24,15 @@ class Segment:
 
 class FakeWhisperModel:
     instances: ClassVar[list["FakeWhisperModel"]] = []
+    #: Every constructor kwargs dict, including attempts that then raised.
+    attempts: ClassVar[list[dict[str, Any]]] = []
+    #: When True, a construction requesting CUDA raises (models broken libs).
+    fail_on_cuda: ClassVar[bool] = False
 
     def __init__(self, model: str, **kwargs: Any) -> None:
+        FakeWhisperModel.attempts.append(kwargs)
+        if FakeWhisperModel.fail_on_cuda and kwargs.get("device") == "cuda":
+            raise RuntimeError("CUDA driver/runtime error")
         self.model = model
         self.kwargs = kwargs
         self.audio: list[Any] = []
@@ -38,9 +46,13 @@ class FakeWhisperModel:
 @pytest.fixture(autouse=True)
 def fake_faster_whisper(monkeypatch: pytest.MonkeyPatch) -> None:
     FakeWhisperModel.instances = []
+    FakeWhisperModel.attempts = []
+    FakeWhisperModel.fail_on_cuda = False
     module = types.ModuleType("faster_whisper")
     module.WhisperModel = FakeWhisperModel  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "faster_whisper", module)
+    # Deterministic default: no GPU unless a test says otherwise.
+    monkeypatch.setattr("prodeo_stt_fasterwhisper._cuda_available", lambda: False)
 
 
 def _clip(samples: int = SAMPLE_RATE) -> AudioClip:
@@ -64,6 +76,51 @@ async def test_transcribe_converts_joins_and_caches() -> None:
 
     await stt.transcribe(_clip())
     assert len(FakeWhisperModel.instances) == 1  # model loaded once, cached
+
+
+@pytest.mark.asyncio
+async def test_auto_selects_cpu_without_gpu() -> None:
+    # Default config is device="auto"/compute_type="auto"; no GPU -> cpu/int8.
+    stt = FasterWhisperStt(FasterWhisperConfig())
+    await stt.transcribe(_clip())
+    kwargs = FakeWhisperModel.instances[0].kwargs
+    assert kwargs["device"] == "cpu"
+    assert kwargs["compute_type"] == "int8"
+
+
+@pytest.mark.asyncio
+async def test_auto_selects_cuda_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("prodeo_stt_fasterwhisper._cuda_available", lambda: True)
+    stt = FasterWhisperStt(FasterWhisperConfig())
+    await stt.transcribe(_clip())
+    kwargs = FakeWhisperModel.instances[0].kwargs
+    assert kwargs["device"] == "cuda"
+    assert kwargs["compute_type"] == "float16"  # auto picks fp16 on GPU
+
+
+@pytest.mark.asyncio
+async def test_cuda_load_failure_falls_back_to_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("prodeo_stt_fasterwhisper._cuda_available", lambda: True)
+    FakeWhisperModel.fail_on_cuda = True
+    stt = FasterWhisperStt(FasterWhisperConfig())
+    text = await stt.transcribe(_clip())
+    assert text == "What happened overnight?"  # still transcribed
+
+    devices = [a["device"] for a in FakeWhisperModel.attempts]
+    computes = [a["compute_type"] for a in FakeWhisperModel.attempts]
+    assert devices == ["cuda", "cpu"]  # tried GPU, fell back
+    assert computes == ["float16", "int8"]
+    assert len(FakeWhisperModel.instances) == 1  # only the CPU model constructed
+
+
+@pytest.mark.asyncio
+async def test_explicit_device_overrides_auto(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A GPU is present, but an explicit device pin must be honored unchanged.
+    monkeypatch.setattr("prodeo_stt_fasterwhisper._cuda_available", lambda: True)
+    stt = FasterWhisperStt(FasterWhisperConfig(device="cpu", compute_type="int8"))
+    await stt.transcribe(_clip())
+    kwargs = FakeWhisperModel.instances[0].kwargs
+    assert (kwargs["device"], kwargs["compute_type"]) == ("cpu", "int8")
 
 
 @pytest.mark.asyncio

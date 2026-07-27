@@ -16,7 +16,22 @@ uv pip install prodeo-wakeword-openwakeword prodeo-stt-fasterwhisper prodeo-tts-
 
 Engines are plugins (entry-point group `prodeo.plugins`, kinds `wakeword` /
 `stt` / `tts`) so heavy model stacks stay out of the client itself. The
-reference set above is CPU-only and fully offline.
+reference set above is CPU-only.
+
+Mjölnir's LLM brain (`prodeo-summarizer-ollama`) installs automatically as a
+dependency — it powers both natural-language understanding and persona. It
+talks to a local **[Ollama](https://ollama.com)**; run it once with the default
+model (see the Run step):
+
+```bash
+ollama serve
+ollama pull llama3.1:8b
+```
+
+Without a reachable Ollama, Mjölnir still works on the deterministic grammar
+(it logs `mjolnir.llm_unreachable` and skips the LLM understanding/personality).
+GPU is used automatically when present — STT/TTS auto-detect CUDA and fall back
+to CPU; Ollama manages its own GPU.
 
 Piper needs a voice model downloaded once before first run — without it the
 client exits at startup with a `voice_path` validation error. Download it to a
@@ -38,7 +53,7 @@ Linux/macOS — `~` expands, so this is copy-paste ready:
 
 ```bash
 export MJOLNIR_SERVER_URL=http://127.0.0.1:8600
-export MJOLNIR_API_TOKEN=...        # the server's PRODEO_API_TOKEN
+export MJOLNIR_API_TOKEN='change-me'       # the server's PRODEO_API_TOKEN
 export MJOLNIR_ENGINES='{"piper": {"voice_path": "'"$HOME"'/piper-voices/en_GB-alan-medium.onnx"}}'
 prodeo-mjolnir
 ```
@@ -104,24 +119,26 @@ Configuration is environment variables with the `MJOLNIR_` prefix — see
   ships).
 - `MJOLNIR_HONORIFIC`, `MJOLNIR_PERSONA_PACK` (`neutral` | `steward`),
   `MJOLNIR_PERSONA_PACK_FILE` — persona; see voice-pipeline.md.
-- `MJOLNIR_PERSONA_REPHRASER` — optional `summarizer`-kind plugin (e.g.
-  `ollama`) that rephrases the overnight briefing in persona. Never used for
-  confirmations.
+- `MJOLNIR_PERSONA_REPHRASER` — `summarizer`-kind plugin (default `ollama`) that
+  rephrases the overnight briefing in persona. Never used for confirmations.
+  Empty = off.
 - `MJOLNIR_SPEAK_NOTIFICATIONS` — `attentive` (default) | `always` | `never`.
 - `MJOLNIR_ENGINES` — per-engine JSON config, e.g.
   `'{"piper": {"voice_path": "/opt/voices/en_GB-alan-medium.onnx"}}'`.
-- `MJOLNIR_INTENT_ROUTER` — `patterns` (default, deterministic + offline) or
-  `llm` to add a constrained Ollama classifier consulted only when the grammar
-  doesn't recognize a phrasing (ADR-0012). `llm` mode requires a reachable
-  Ollama (`ollama serve` + `ollama pull <model>`).
-- `MJOLNIR_LLM_ROUTER_BASE_URL` (default `http://localhost:11434`),
-  `MJOLNIR_LLM_ROUTER_MODEL` (default `llama3.2`),
-  `MJOLNIR_LLM_ROUTER_TIMEOUT_S` (default `4`) — the LLM router's Ollama
-  endpoint, model, and per-call timeout.
+- `MJOLNIR_LLM_BASE_URL` (default `http://localhost:11434`) and
+  `MJOLNIR_LLM_MODEL` (default `llama3.1:8b`) — Mjölnir's brain. **One identity
+  drives both** the intent router and the persona rephraser; point them at
+  another endpoint/model to swap the backend (ADR-0013).
+- `MJOLNIR_INTENT_ROUTER` — `llm` (default) consults the constrained LLM
+  classifier only when the deterministic grammar misses; `patterns` = grammar
+  only, fully offline (ADR-0012).
+- `MJOLNIR_LLM_ROUTER_TIMEOUT_S` (default `4`) — per-classification timeout;
+  on timeout the utterance is treated as unrecognized.
 - `MJOLNIR_LLM_INTENTS` — the closed set of intents the LLM may emit (JSON
-  list). Defaults to the read-only set
-  `["status","pending","overnight","help","cancel"]`; add `approve`, `deny`, or
-  `stop` to let it classify actions too. Anything outside this set is dropped.
+  list). Defaults to include actions
+  `["status","pending","overnight","help","cancel","approve","deny","stop"]`;
+  the handler still resolves the real target and guards ambiguity (ADR-0013).
+  Anything outside this set is dropped.
 - `MJOLNIR_ECHO_COOLDOWN_S` — post-speech wake-word mute window (default 0.4 s).
 
 ## What you can say

@@ -57,6 +57,7 @@ stream at `/api/ws/events`; interactive docs at `/docs`.
 | [Voice Pipeline](docs/architecture/voice-pipeline.md) | Mjölnir, the voice client |
 | [Dashboard Architecture](docs/architecture/dashboard.md) | Web UI design |
 | [Repository Layout](docs/architecture/repository-layout.md) | Where code lives |
+| [Running the System](docs/deployment/running-the-system.md) | What starts what: processes vs. in-process plugins |
 | [Coding Standards](docs/development/coding-standards.md) | How we write code |
 | [Development Environment](docs/development/environment.md) | Getting set up |
 | [Contributing](docs/contributing.md) | How to contribute |

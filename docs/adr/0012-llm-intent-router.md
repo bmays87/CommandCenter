@@ -1,6 +1,8 @@
 # ADR-0012: A constrained LLM as intent classifier, never executor
 
-- **Status**: Accepted
+- **Status**: Accepted (amended by [ADR-0013](0013-ollama-default-brain.md),
+  which makes the LLM router the default and widens the allowlist to include
+  actions — the safety envelope below is retained)
 - **Date**: 2026-07-22
 
 ## Context

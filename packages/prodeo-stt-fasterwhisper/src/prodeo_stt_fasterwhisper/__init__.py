@@ -12,6 +12,7 @@ import asyncio
 import threading
 from typing import Any
 
+import structlog
 from pydantic import BaseModel
 
 from prodeo.plugins import PluginManifest
@@ -19,17 +20,44 @@ from prodeo_mjolnir.engines import SAMPLE_RATE, AudioClip
 
 VERSION = "0.1.0"
 
+_log = structlog.get_logger(__name__)
+
 
 class FasterWhisperConfig(BaseModel):
     """Validated by the engine loader before construction."""
 
     model: str = "base.en"
-    device: str = "cpu"
-    compute_type: str = "int8"
+    #: ``auto`` (default) uses CUDA when a GPU is present, else CPU. Pin to
+    #: ``cuda``/``cpu`` to override the detection.
+    device: str = "auto"
+    #: ``auto`` (default) picks ``float16`` on CUDA and ``int8`` on CPU. Pin to
+    #: any CTranslate2 compute type to override.
+    compute_type: str = "auto"
     language: str = "en"
     beam_size: int = 5
     #: Where model weights are cached (empty = the library default).
     download_root: str = ""
+
+
+def _cuda_available() -> bool:
+    """True when CTranslate2 (ships with faster-whisper) sees a CUDA device."""
+    try:
+        import ctranslate2
+
+        return bool(ctranslate2.get_cuda_device_count() > 0)
+    except Exception:
+        return False
+
+
+def _resolve_device(device: str, compute_type: str) -> tuple[str, str]:
+    """Resolve the ``auto`` sentinels to a concrete (device, compute_type)."""
+    resolved_device = device
+    if device == "auto":
+        resolved_device = "cuda" if _cuda_available() else "cpu"
+    resolved_compute = compute_type
+    if compute_type == "auto":
+        resolved_compute = "float16" if resolved_device == "cuda" else "int8"
+    return resolved_device, resolved_compute
 
 
 class FasterWhisperStt:
@@ -69,12 +97,31 @@ class FasterWhisperStt:
             if self._model is None:
                 from faster_whisper import WhisperModel  # heavy: ctranslate2 et al.
 
-                self._model = WhisperModel(
-                    self._config.model,
-                    device=self._config.device,
-                    compute_type=self._config.compute_type,
-                    download_root=self._config.download_root or None,
+                device, compute_type = _resolve_device(
+                    self._config.device, self._config.compute_type
                 )
+                root = self._config.download_root or None
+                try:
+                    self._model = WhisperModel(
+                        self._config.model,
+                        device=device,
+                        compute_type=compute_type,
+                        download_root=root,
+                    )
+                except Exception:
+                    if device != "cuda":
+                        raise
+                    # CUDA was detected but the runtime failed to load - fall
+                    # back to CPU rather than leaving the client mute.
+                    _log.warning(
+                        "stt.cuda_unavailable_fallback", model=self._config.model, exc_info=True
+                    )
+                    self._model = WhisperModel(
+                        self._config.model,
+                        device="cpu",
+                        compute_type="int8",
+                        download_root=root,
+                    )
             return self._model
 
 

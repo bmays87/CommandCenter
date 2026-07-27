@@ -51,18 +51,35 @@ class MjolnirSettings(BaseSettings):
     #: speaker->mic can't self-trigger (half-duplex echo guard).
     echo_cooldown_s: float = 0.4
 
+    # LLM brain (Mjölnir's personality; Ollama by default). One identity powers
+    # both the intent router and the persona rephraser - see
+    # docs/adr/0013-ollama-default-brain.md. Swap the backend by pointing these
+    # at another endpoint/model and setting ``persona_rephraser`` to its plugin.
+    #: Ollama (or compatible) endpoint both the router and rephraser use.
+    llm_base_url: str = "http://localhost:11434"
+    #: The model both the router and rephraser use.
+    llm_model: str = "llama3.1:8b"
+
     # Intent routing
-    #: ``patterns`` = deterministic offline grammar only (default). ``llm`` adds
-    #: a constrained Ollama classifier consulted *only* when the grammar returns
-    #: UnknownIntent (see docs/adr/0012-llm-intent-router.md).
-    intent_router: Literal["patterns", "llm"] = "patterns"
-    llm_router_base_url: str = "http://localhost:11434"
-    llm_router_model: str = "llama3.2"
+    #: ``llm`` (default) = constrained LLM classifier consulted *only* when the
+    #: deterministic grammar returns UnknownIntent; ``patterns`` = grammar only,
+    #: fully offline (docs/adr/0012-llm-intent-router.md).
+    intent_router: Literal["patterns", "llm"] = "llm"
     #: Bound on one classification call; on timeout the utterance is UnknownIntent.
     llm_router_timeout_s: float = 4.0
-    #: The closed set of intents the LLM may emit. Defaults to read-only
-    #: intents; add ``approve``/``deny``/``stop`` to let it classify actions.
-    llm_intents: list[str] = ["status", "pending", "overnight", "help", "cancel"]
+    #: The closed set of intents the LLM may emit. Actions (``approve``/``deny``/
+    #: ``stop``) are included by default; the handler still resolves the real
+    #: target and guards against ambiguous matches (ADR-0013).
+    llm_intents: list[str] = [
+        "status",
+        "pending",
+        "overnight",
+        "help",
+        "cancel",
+        "approve",
+        "deny",
+        "stop",
+    ]
 
     # Persona (see docs/architecture/voice-pipeline.md#persona)
     #: Interpolated into every response template ("sir", "ma'am", a name, or
@@ -72,10 +89,10 @@ class MjolnirSettings(BaseSettings):
     persona_pack: str = "neutral"
     #: Optional JSON file of template overrides layered on the pack.
     persona_pack_file: Path | None = None
-    #: Summarizer-kind plugin (e.g. ``ollama``) that rephrases
-    #: *non-time-critical* responses - the overnight briefing - in persona.
+    #: Summarizer-kind plugin that rephrases *non-time-critical* responses - the
+    #: overnight briefing - in persona, using the ``llm_*`` identity above.
     #: Confirmations stay deterministic templates regardless. Empty = off.
-    persona_rephraser: str = ""
+    persona_rephraser: str = "ollama"
     #: Bound on rephrasing; on timeout the deterministic text is spoken.
     rephrase_timeout_s: float = 10.0
 

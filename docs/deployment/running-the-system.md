@@ -1,0 +1,83 @@
+# Running the system: what starts what
+
+A common question: "I have a dozen packages — do I start all of them?" No. This
+page is the mental model for how the pieces run.
+
+## Two processes, not a dozen
+
+Everything in `packages/` is one of two things: a **process you launch**, or an
+**in-process plugin** that loads automatically once installed. There are only
+**two long-running processes** in a full setup (plus one optional external
+daemon):
+
+| You start | What it is | What runs *inside* it |
+|---|---|---|
+| `prodeo-server` | The headless core; REST + WebSocket API on `:8600` | The **agent adapters** (`claude-code`, `aider`, `codex`), mediation, event store, the daily-digest **summarizer** |
+| `prodeo-mjolnir` | The voice client — a network *client* of the server, exactly like the dashboard | The **voice engines**: one **wakeword**, one **STT**, one **TTS**, plus the **LLM personality** summarizer |
+| Ollama | Mjölnir's **default LLM brain** — an external daemon on `:11434`, **not** part of this repo. Degrades gracefully if absent (grammar still works). | — |
+
+Mjölnir knows nothing about adapters. It observes and controls sessions purely
+by calling the server's API ([voice-pipeline.md](../architecture/voice-pipeline.md)).
+So the agent-watching packages live in the **server**, and the voice packages
+live in **Mjölnir** — two separate processes, possibly on separate machines
+(e.g. a Raspberry Pi satellite; see [satellite-pi.md](satellite-pi.md)).
+
+## Plugins are in-process and auto-discovered
+
+The engine and adapter packages are **not** processes and are **not** started
+by hand. Each exposes a Python entry point in the `prodeo.plugins` group;
+whichever host process needs that kind discovers it via `importlib.metadata`
+and runs it **inside its own process**. Installing the package is all that is
+required — see [plugin-system.md](../architecture/plugin-system.md).
+
+- The **server** loads `adapter`, `notifier`, and `summarizer` kinds. It
+  deliberately *skips* voice kinds if they happen to be installed alongside it.
+- **Mjölnir** hosts the voice kinds (`wakeword` / `stt` / `tts`) and can also
+  use a `summarizer` for persona rephrasing.
+
+## "More packages" ≠ "better Mjölnir"
+
+The extra voice packages are **swappable implementations of a fixed set of
+roles**, and Mjölnir uses **exactly one of each**, chosen by config — they do
+not stack:
+
+| Role | Options installed | Selected by | Default |
+|---|---|---|---|
+| Wake word | `openwakeword` | `MJOLNIR_WAKEWORD_PLUGIN` | `openwakeword` |
+| Speech-to-text | `faster-whisper` **or** `parakeet` | `MJOLNIR_STT_PLUGIN` | `faster-whisper` |
+| Text-to-speech | `piper` | `MJOLNIR_TTS_PLUGIN` | `piper` |
+| Persona rephraser | `ollama` *(on by default; ADR-0013)* | `MJOLNIR_PERSONA_REPHRASER` | `ollama` |
+
+`parakeet` is a heavier GPU alternative to `faster-whisper`; you would run one
+*or* the other, never both. Per-engine settings go in `MJOLNIR_ENGINES` (JSON).
+
+## Bringing it up locally
+
+```bash
+# 0. One-time: install the workspace (server + all in-repo packages)
+uv sync --all-groups
+
+# 1. Start Mjölnir's brain (its default LLM personality). GPU is used
+#    automatically if present.
+ollama serve && ollama pull llama3.1:8b
+
+# 2. Start the core (hosts the adapters, serves the API on :8600)
+PRODEO_API_TOKEN=change-me uv run prodeo-server
+
+# 3. In another shell, start the voice client (loads its engines in-process,
+#    connects to the server). See packages/prodeo-mjolnir/README.md for the
+#    one-time Piper voice download and the MJOLNIR_ENGINES value.
+export MJOLNIR_SERVER_URL=http://127.0.0.1:8600
+export MJOLNIR_API_TOKEN=change-me            # the server's PRODEO_API_TOKEN
+export MJOLNIR_ENGINES='{"piper": {"voice_path": "'"$HOME"'/piper-voices/en_GB-alan-medium.onnx"}}'
+prodeo-mjolnir
+```
+
+Ollama is the default brain but not mandatory: without it, Mjölnir logs
+`mjolnir.llm_unreachable` and falls back to the deterministic grammar (basic
+commands still work, just no LLM understanding or personality). Point
+`MJOLNIR_LLM_BASE_URL` / `MJOLNIR_LLM_MODEL` elsewhere to run the model on
+another host or swap it (ADR-0013).
+
+That's the whole topology. The dashboard is just another client of the same
+server; nothing else is a process you start.

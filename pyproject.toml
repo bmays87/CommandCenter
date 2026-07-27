@@ -107,8 +107,10 @@ packages = [
 [[tool.mypy.overrides]]
 module = [
     "faster_whisper.*",
+    "ctranslate2.*",
     "openwakeword.*",
     "piper.*",
+    "onnxruntime.*",
     "nemo.*",
     "sounddevice",
 ]

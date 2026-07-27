@@ -13,6 +13,7 @@ from prodeo_mjolnir.intents import (
     IntentRouter,
     PendingIntent,
     StatusIntent,
+    StopIntent,
     UnknownIntent,
 )
 from prodeo_mjolnir.llm_router import LlmIntentRouter
@@ -71,6 +72,28 @@ async def test_target_hint_is_cleaned_and_passed_through() -> None:
     intent = await router.route("give the migration a thumbs up")
     # The hint is cleaned like any target; the LLM never supplies an id.
     assert intent == ApproveIntent(target="database migration")
+
+
+async def test_action_intent_on_default_allowlist_is_classified() -> None:
+    # ADR-0013 default allowlist includes actions; the target is a hint the
+    # handler later resolves (the LLM never names an id).
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _reply("stop", target="the nightly refactor")
+
+    default_allowed = {
+        "status",
+        "pending",
+        "overnight",
+        "help",
+        "cancel",
+        "approve",
+        "deny",
+        "stop",
+    }
+    router = _router(httpx.MockTransport(handler), allowed=default_allowed)
+    assert await router.route("wind down the nightly refactor") == StopIntent(
+        target="nightly refactor"
+    )
 
 
 async def test_intent_outside_the_allowlist_is_dropped() -> None:

@@ -10,6 +10,7 @@ import asyncio
 import contextlib
 import signal
 
+import httpx
 import structlog
 
 from prodeo.logging import configure_logging
@@ -31,6 +32,7 @@ _log = structlog.get_logger(__name__)
 
 def build_pipeline(settings: MjolnirSettings) -> tuple[VoicePipeline, ServerClient]:
     """Wire everything; separated from ``run`` for reuse and inspection."""
+    settings = _link_llm_identity(settings)
     engines = load_engines(settings)
     client = ServerClient(
         settings.server_url,
@@ -63,15 +65,36 @@ def build_pipeline(settings: MjolnirSettings) -> tuple[VoicePipeline, ServerClie
     return pipeline, client
 
 
+def _link_llm_identity(settings: MjolnirSettings) -> MjolnirSettings:
+    """Make Mjölnir's ``llm_*`` identity the default for the persona rephraser.
+
+    The intent router reads ``llm_base_url``/``llm_model`` directly; the
+    rephraser is a summarizer plugin configured through ``engines[<name>]``.
+    Fold the canonical identity into that plugin's config so one knob drives
+    both - an explicit ``MJOLNIR_ENGINES`` entry still wins. Keyed on the
+    plugin name (not the literal ``"ollama"``) so swapping the backend is pure
+    config, keeping this the only place the two are linked.
+    """
+    name = settings.persona_rephraser
+    if not name:
+        return settings
+    merged = {
+        "base_url": settings.llm_base_url,
+        "model": settings.llm_model,
+        **settings.engines.get(name, {}),
+    }
+    return settings.model_copy(update={"engines": {**settings.engines, name: merged}})
+
+
 def _build_router(settings: MjolnirSettings) -> Router:
-    """Deterministic grammar by default; the constrained LLM fallback on demand."""
+    """Deterministic grammar first; the constrained LLM fallback when enabled."""
     base = IntentRouter()
     if settings.intent_router != "llm":
         return base
     return LlmIntentRouter(
         base=base,
-        base_url=settings.llm_router_base_url,
-        model=settings.llm_router_model,
+        base_url=settings.llm_base_url,
+        model=settings.llm_model,
         allowed=set(settings.llm_intents),
         timeout_s=settings.llm_router_timeout_s,
     )
@@ -81,6 +104,7 @@ async def run(settings: MjolnirSettings | None = None) -> None:
     settings = settings or MjolnirSettings()
     configure_logging(settings.log_level)
     pipeline, client = build_pipeline(settings)
+    await _probe_llm(settings)
     await pipeline.start()
     _log.info("mjolnir.started", server=settings.server_url, client_id=settings.client_id)
 
@@ -95,6 +119,21 @@ async def run(settings: MjolnirSettings | None = None) -> None:
         await pipeline.stop()
         await client.close()
         _log.info("mjolnir.stopped")
+
+
+async def _probe_llm(settings: MjolnirSettings) -> None:
+    """Warn (non-fatally) if Mjölnir's brain is expected but unreachable.
+
+    The router fails closed and the grammar still works, so this is only a
+    heads-up that the LLM understanding/personality will be absent.
+    """
+    if settings.intent_router != "llm" and not settings.persona_rephraser:
+        return
+    try:
+        async with httpx.AsyncClient(base_url=settings.llm_base_url, timeout=2.0) as http:
+            (await http.get("/api/tags")).raise_for_status()
+    except Exception as exc:
+        _log.warning("mjolnir.llm_unreachable", url=settings.llm_base_url, error=str(exc))
 
 
 async def calibrate(settings: MjolnirSettings | None = None) -> None:

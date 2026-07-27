@@ -12,12 +12,15 @@ import asyncio
 import threading
 from typing import Any
 
+import structlog
 from pydantic import BaseModel
 
 from prodeo.plugins import PluginManifest
 from prodeo_mjolnir.engines import AudioClip
 
 VERSION = "0.1.0"
+
+_log = structlog.get_logger(__name__)
 
 
 class PiperTtsConfig(BaseModel):
@@ -28,6 +31,20 @@ class PiperTtsConfig(BaseModel):
     voice_path: str
     #: For multi-speaker voices; None = the voice's default speaker.
     speaker_id: int | None = None
+    #: GPU acceleration. None (default) = use CUDA only if onnxruntime's CUDA
+    #: provider is actually available (needs ``onnxruntime-gpu``), else CPU.
+    #: Set True/False to force it.
+    use_cuda: bool | None = None
+
+
+def _cuda_provider_available() -> bool:
+    """True when onnxruntime exposes the CUDA execution provider."""
+    try:
+        import onnxruntime
+
+        return "CUDAExecutionProvider" in onnxruntime.get_available_providers()
+    except Exception:
+        return False
 
 
 class PiperTts:
@@ -62,7 +79,20 @@ class PiperTts:
             if self._voice is None:
                 from piper import PiperVoice  # heavy: onnxruntime et al.
 
-                self._voice = PiperVoice.load(self._config.voice_path)
+                use_cuda = self._config.use_cuda
+                if use_cuda is None:
+                    use_cuda = _cuda_provider_available()
+                try:
+                    self._voice = PiperVoice.load(self._config.voice_path, use_cuda=use_cuda)
+                except Exception:
+                    if not use_cuda:
+                        raise
+                    _log.warning(
+                        "tts.cuda_unavailable_fallback",
+                        voice=self._config.voice_path,
+                        exc_info=True,
+                    )
+                    self._voice = PiperVoice.load(self._config.voice_path, use_cuda=False)
             return self._voice
 
 

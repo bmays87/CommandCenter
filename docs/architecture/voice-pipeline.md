@@ -43,6 +43,12 @@ pulled in by the core install. STT engines are plugins precisely so
 `prodeo-stt-parakeet` can have brutal dependencies while `prodeo-stt-fasterwhisper`
 stays lightweight. The voice client works CPU-only out of the box.
 
+**GPU is automatic.** The default engines detect CUDA themselves and use it when
+present, with no user toggle: faster-whisper picks `cuda`/`float16` when
+CTranslate2 sees a device (else `cpu`/`int8`), Piper enables the CUDA execution
+provider only when onnxruntime exposes it, and both fall back to CPU (with a
+warning) if the GPU load fails. Ollama manages its own GPU (ADR-0013).
+
 ## Intent Handling
 
 Intents route through a `Router` seam with two implementations behind it:
@@ -51,16 +57,19 @@ Intents route through a `Router` seam with two implementations behind it:
    "status", "what happened overnight", "approve the permission for <session>",
    "stop <session>", and numbered answering — "you have two: … approve number
    two", "respond to one with <text>". Instant, predictable, fully offline.
-2. **Constrained LLM classifier (optional fallback).** With
-   `MJOLNIR_INTENT_ROUTER=llm`, an Ollama model is consulted **only** when the
-   grammar returns `UnknownIntent`, so known phrasings never pay LLM latency.
-   The model is a *classifier over a closed intent set, never an executor*: it
-   picks one frozen intent (plus a free-text target *hint*), can emit nothing
-   outside an allowlist (`MJOLNIR_LLM_INTENTS`, read-only by default), and fails
-   closed to "didn't understand" if Ollama is unreachable, slow, or malformed.
-   Target resolution and the ambiguity guard stay in the handlers against live
-   data — the LLM never names an id. See
-   [ADR-0012](../adr/0012-llm-intent-router.md).
+2. **Constrained LLM classifier (default; `MJOLNIR_INTENT_ROUTER=llm`).** An
+   Ollama model is consulted **only** when the grammar returns `UnknownIntent`,
+   so known phrasings never pay LLM latency and the client still runs offline on
+   the grammar alone (`patterns` mode disables it entirely). The model is a
+   *classifier over a closed intent set, never an executor*: it picks one frozen
+   intent (plus a free-text target *hint*), can emit nothing outside the
+   allowlist (`MJOLNIR_LLM_INTENTS`, which by default includes the
+   `approve`/`deny`/`stop` actions), and fails closed to "didn't understand" if
+   Ollama is unreachable, slow, or malformed. Target resolution and the
+   single-match ambiguity guard stay in the handlers against live data — the LLM
+   never names an id, and confirmations remain deterministic. See
+   [ADR-0012](../adr/0012-llm-intent-router.md) and
+   [ADR-0013](../adr/0013-ollama-default-brain.md).
 
 **Echo suppression.** The pipeline is half-duplex — it does not listen while
 speaking — but a real mic keeps buffering during playback, so TTS can bleed
@@ -87,12 +96,17 @@ from free to optional:
    (`en_GB-alan`, `en_GB-northern_english_male`, ...). More expressive engines
    (XTTS-class) arrive as separate `tts` plugin packages with their own heavy
    dependencies — the same isolation rule as Parakeet above.
-4. **Optional LLM persona layer** (plugin). A rephraser that renders
+4. **LLM persona layer (default-on).** A rephraser that renders
    *non-time-critical* responses in persona — the morning briefing, daily
-   summaries — via the same local-model path as the `summarizer` plugin. It is
-   never in the loop for interaction confirmations ("approved", "stopped"):
-   those stay deterministic templates, because a permission answer must be
-   fast, predictable, and impossible to garble.
+   summaries — via the local-model path (`prodeo-summarizer-ollama`, a
+   dependency of the client; `MJOLNIR_PERSONA_REPHRASER=ollama` by default,
+   empty to disable). It shares Mjölnir's single LLM identity
+   (`MJOLNIR_LLM_BASE_URL`/`MJOLNIR_LLM_MODEL`) with the intent router
+   ([ADR-0013](../adr/0013-ollama-default-brain.md)). It is never in the loop
+   for interaction confirmations ("approved", "stopped"): those stay
+   deterministic templates, because a permission answer must be fast,
+   predictable, and impossible to garble. Degrades to the deterministic text if
+   the model is unreachable or times out.
 
 **Boundary:** persona voices must be original, stock, or licensed. Cloning a
 real person's voice without their consent (an actor, a colleague) is out of

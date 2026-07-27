@@ -3466,6 +3466,7 @@ source = { editable = "packages/prodeo-mjolnir" }
 dependencies = [
     { name = "httpx" },
     { name = "prodeo" },
+    { name = "prodeo-summarizer-ollama" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "python-ulid" },
@@ -3482,6 +3483,7 @@ audio = [
 requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "prodeo", editable = "." },
+    { name = "prodeo-summarizer-ollama", editable = "packages/prodeo-summarizer-ollama" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pydantic-settings", specifier = ">=2.3" },
     { name = "python-ulid", specifier = ">=2.6" },
