@@ -9,6 +9,10 @@ after is warm.
 """
 
 import asyncio
+import contextlib
+import glob
+import os
+import sys
 import threading
 from typing import Any
 
@@ -21,6 +25,29 @@ from prodeo_mjolnir.engines import SAMPLE_RATE, AudioClip
 VERSION = "0.1.0"
 
 _log = structlog.get_logger(__name__)
+
+
+def _add_cuda_dll_dirs() -> None:
+    """Register the pip CUDA wheels' DLL folders on Windows.
+
+    ``nvidia-cublas-cu12`` / ``nvidia-cudnn-cu12`` ship ``cublas64_12.dll`` and
+    ``cudnn64_9.dll`` under ``site-packages/nvidia/*/bin``, but CTranslate2 does
+    not add those to the loader path the way PyTorch does - so ``device="cuda"``
+    fails with "Library cublas64_12.dll is not found" until we register them.
+    No-op off Windows and when the wheels aren't installed.
+    """
+    if sys.platform != "win32":
+        return
+    base = os.path.join(sys.prefix, "Lib", "site-packages", "nvidia")
+    path_parts = os.environ.get("PATH", "").split(os.pathsep)
+    for bin_dir in glob.glob(os.path.join(base, "*", "bin")):
+        with contextlib.suppress(OSError):
+            os.add_dll_directory(bin_dir)
+        # CTranslate2 loads cuBLAS/cuDNN via a path that ignores
+        # add_dll_directory, so PATH is what actually makes them resolvable.
+        if bin_dir not in path_parts:
+            os.environ["PATH"] = bin_dir + os.pathsep + os.environ["PATH"]
+            path_parts.append(bin_dir)
 
 
 class FasterWhisperConfig(BaseModel):
@@ -95,6 +122,7 @@ class FasterWhisperStt:
     def _ensure_model(self) -> Any:  # WhisperModel; Any keeps the import lazy
         with self._lock:
             if self._model is None:
+                _add_cuda_dll_dirs()  # so device="cuda" can load its runtime on Windows
                 from faster_whisper import WhisperModel  # heavy: ctranslate2 et al.
 
                 device, compute_type = _resolve_device(

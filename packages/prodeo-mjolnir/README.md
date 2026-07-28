@@ -70,6 +70,8 @@ $env:MJOLNIR_ENGINES = "{""piper"": {""voice_path"": ""$voice""}}"
 prodeo-mjolnir
 ```
 
+or simply .\start-mjolnir.ps1 -Token difpat01
+
 > The `voice_path` must be a real, full path to the `.onnx` file you
 > downloaded — Mjölnir loads `<voice_path>` and `<voice_path>.json` beside it.
 > A literal `C:/path/to/...` or `~/piper-voices/...` (unexpanded) fails with

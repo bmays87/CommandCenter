@@ -67,6 +67,31 @@ identity + remote agent nodes reporting to a hub; dashboard multi-node fleet vie
 deployment recipes (Docker, systemd, Home Assistant add-on).
 **Exit:** sessions on two machines visible and controllable from one dashboard.
 
+## Phase 6 — Onboarding & Extensibility (web-first setup)
+Make installing and extending Command Center a task in the dashboard, not a
+shell ritual — motivated by voice setup today needing hand-assembled `MJOLNIR_*`
+env vars, manual model downloads, and manual CUDA-runtime installs.
+- **Extensions manager** in the dashboard: browse, install, enable/disable, and
+  configure plugins (adapters, notifiers, summarizers, voice engines) through
+  forms generated from each plugin's `config_model` schema — the same
+  `PluginManifest`/entry-point mechanism (Phase 3), surfaced in the UI. A step
+  toward the signed plugin index (Icebox). **Any install that writes bulk data
+  (models, runtimes, extension payloads) must prompt for a target
+  path/drive — never silently assume the system drive.** (The
+  `start-mjolnir.ps1 -ModelsPath` flag is the interim CLI form of this.)
+- **Guided voice-client setup**: install Mjölnir and its engine plugins,
+  download the STT/TTS and wake-word models, write the config, and
+  launch/register the client from the web UI — replacing the manual env vars
+  and model downloads.
+- **Proactive environment provisioning**: detect hardware and optional
+  dependencies and set up the best path instead of silently degrading — an
+  NVIDIA GPU offers a one-click CUDA-runtime install (cuBLAS/cuDNN) so STT runs
+  on the GPU rather than falling back to CPU; a missing engine library is
+  surfaced with a fix action, not a stack trace.
+**Exit:** a new user installs the dashboard, adds the Claude Code adapter and
+the voice client, and approves a permission by voice — without opening a
+terminal.
+
 ## Later / Icebox
 Plugin index with signing; Kubernetes operator; Git/Docker integrations as plugins;
 multi-user auth; mobile apps (the API is the product — apps may come from the
