@@ -127,10 +127,13 @@ Configuration is environment variables with the `MJOLNIR_` prefix — see
 - `MJOLNIR_SPEAK_NOTIFICATIONS` — `attentive` (default) | `always` | `never`.
 - `MJOLNIR_ENGINES` — per-engine JSON config, e.g.
   `'{"piper": {"voice_path": "/opt/voices/en_GB-alan-medium.onnx"}}'`.
-- `MJOLNIR_LLM_BASE_URL` (default `http://localhost:11434`) and
+- `MJOLNIR_LLM_BASE_URL` (default `http://127.0.0.1:11434`) and
   `MJOLNIR_LLM_MODEL` (default `llama3.1:8b`) — Mjölnir's brain. **One identity
   drives both** the intent router and the persona rephraser; point them at
-  another endpoint/model to swap the backend (ADR-0013).
+  another endpoint/model to swap the backend (ADR-0013). The default is the
+  IPv4 literal rather than `localhost` on purpose: Ollama binds IPv4 only, and
+  `localhost` resolves to `::1` first, costing ~2s per call on the failed IPv6
+  attempt — a large slice of `MJOLNIR_LLM_ROUTER_TIMEOUT_S`.
 - `MJOLNIR_INTENT_ROUTER` — `llm` (default) consults the constrained LLM
   classifier only when the deterministic grammar misses; `patterns` = grammar
   only, fully offline (ADR-0012).

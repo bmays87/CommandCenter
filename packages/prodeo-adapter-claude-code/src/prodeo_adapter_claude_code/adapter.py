@@ -192,12 +192,29 @@ class ClaudeCodeAdapter(ObserveOnlyAdapter):
             self._paths[f.native_id] = f.path
             cached = self._peek_cache.get(f.native_id)
             if cached is not None and cached[0] == f.mtime:
-                descriptors.append(cached[1])
+                descriptors.append(self._with_live_state(cached[1], f.mtime))
                 continue
             desc = await asyncio.to_thread(self._describe, f)
             self._peek_cache[f.native_id] = (f.mtime, desc)
             descriptors.append(desc)
         return descriptors
+
+    def _with_live_state(self, desc: SessionDescriptor, mtime: float) -> SessionDescriptor:
+        """Re-evaluate the idle-derived ``state`` on a cache hit.
+
+        ``state`` is a function of *wall-clock* idle time, not just ``mtime``, so
+        a cached descriptor freezes whatever state it had when computed. A
+        session that stopped writing while still ``RUNNING`` would otherwise
+        never cross into ``COMPLETED`` here - and discovery's stale ``RUNNING``
+        would fight the watcher's ``idle`` verdict every cycle, storming
+        ``session.completed``. Recompute from the current time instead.
+        """
+        live = (
+            SessionState.RUNNING
+            if time.time() - mtime < self._idle_timeout
+            else SessionState.COMPLETED
+        )
+        return desc if live == desc.state else desc.model_copy(update={"state": live})
 
     def _scan(self) -> list[_TranscriptFile]:
         if not self._projects_dir.is_dir():

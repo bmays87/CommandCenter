@@ -13,11 +13,23 @@
 ```bash
 git clone https://github.com/prodeo/command-center
 cd command-center
-uv sync --all-packages          # creates .venv, installs workspace + dev deps
+uv sync --all-groups            # creates .venv, installs workspace + dev deps
 uv run pytest                   # run the test suite
 uv run prodeo-server --dev      # start the server with hot reload
 cd dashboard && npm ci && npm run dev   # dashboard against the dev server
 ```
+
+Use `--all-groups`, not `--all-packages`: the latter installs every workspace
+member matched by the `packages/*` glob, including `prodeo-stt-parakeet` and its
+multi-GB `nemo-toolkit[asr]` → torch chain. That package is deliberately outside
+the `dev` group — install it only on the GPU box that needs it.
+
+`uv sync` is *exact*: it makes `.venv` match `uv.lock` plus the selected groups
+and **removes anything else it finds**, including packages you installed by hand
+with `pip`/`uv pip`. Anything that must survive belongs in a `pyproject.toml`;
+anything genuinely system-level (CUDA — see
+[running-the-system.md](../deployment/running-the-system.md)) belongs outside the
+virtualenv entirely.
 
 `scripts/bootstrap.sh` performs the above plus git hooks (`pre-commit` running
 ruff + mypy on changed files).

@@ -25,7 +25,9 @@ plugin) read `engines["ollama"]`. They only coincided by default.
    probe warns (`mjolnir.llm_unreachable`) when the brain is expected but down.
 
 2. **One canonical LLM identity.** New `llm_base_url` / `llm_model`
-   (default `http://localhost:11434` / `llama3.1:8b`) are the single source both
+   (default `http://127.0.0.1:11434` / `llama3.1:8b` — the IPv4 literal, since
+   Ollama binds IPv4 only and `localhost` tries `::1` first at ~2s per call)
+   are the single source both
    features derive from. The router reads them directly; the rephraser is linked
    in the composition root (`main.py` `_link_llm_identity`) by folding the
    identity into `engines[persona_rephraser]` — **keyed on the plugin name, not

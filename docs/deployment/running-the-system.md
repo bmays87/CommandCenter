@@ -55,6 +55,9 @@ not stack:
 
 ```bash
 # 0. One-time: install the workspace (server + all in-repo packages)
+#    Note: --all-groups, never --all-packages (the latter drags in the
+#    parakeet/NeMo/torch chain). uv sync is exact — it deletes anything in
+#    .venv that the lock doesn't call for, hand-installed packages included.
 uv sync --all-groups
 
 # 1. Start Mjölnir's brain (its default LLM personality). GPU is used
@@ -78,6 +81,14 @@ Ollama is the default brain but not mandatory: without it, Mjölnir logs
 commands still work, just no LLM understanding or personality). Point
 `MJOLNIR_LLM_BASE_URL` / `MJOLNIR_LLM_MODEL` elsewhere to run the model on
 another host or swap it (ADR-0013).
+
+GPU speech-to-text is optional in the same way. `faster-whisper` needs the CUDA
+runtime installed **machine-wide** — CUDA Toolkit 12.x plus cuDNN 9, never pip's
+`nvidia-*` wheels inside `.venv`, which the next `uv sync` removes. Without it
+STT runs on the CPU and logs `stt.cuda_runtime_incomplete`. See
+[packages/prodeo-stt-fasterwhisper/README.md](../../packages/prodeo-stt-fasterwhisper/README.md#gpu-cuda)
+for the exact libraries and versions; `start-mjolnir.ps1` checks for them on
+startup and prints what's missing.
 
 That's the whole topology. The dashboard is just another client of the same
 server; nothing else is a process you start.

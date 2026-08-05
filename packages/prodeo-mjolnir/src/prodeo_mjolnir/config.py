@@ -56,7 +56,11 @@ class MjolnirSettings(BaseSettings):
     # docs/adr/0013-ollama-default-brain.md. Swap the backend by pointing these
     # at another endpoint/model and setting ``persona_rephraser`` to its plugin.
     #: Ollama (or compatible) endpoint both the router and rephraser use.
-    llm_base_url: str = "http://localhost:11434"
+    #: 127.0.0.1 rather than ``localhost`` on purpose: Ollama binds IPv4 only,
+    #: while ``localhost`` resolves to ``::1`` first, and the failed IPv6
+    #: attempt costs ~2s *per call* before the fallback - a third of the
+    #: router's budget spent on nothing. Override for a remote backend.
+    llm_base_url: str = "http://127.0.0.1:11434"
     #: The model both the router and rephraser use.
     llm_model: str = "llama3.1:8b"
 

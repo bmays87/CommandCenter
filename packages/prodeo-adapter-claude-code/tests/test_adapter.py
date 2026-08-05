@@ -86,6 +86,32 @@ async def test_discovery_marks_idle_sessions_completed(tmp_path: Path) -> None:
     await adapter.stop()
 
 
+@pytest.mark.asyncio
+async def test_cached_descriptor_state_is_re_evaluated_when_idle(tmp_path: Path) -> None:
+    """A cache hit (file unchanged) must recompute the idle-derived state.
+
+    Regression: the descriptor is cached by mtime, but ``state`` depends on
+    wall-clock idle time. A session frozen as RUNNING must still cross into
+    COMPLETED once idle - otherwise discovery keeps reporting a stale RUNNING
+    that fights the watcher's ``idle`` verdict, storming ``session.completed``.
+    """
+    projects = make_projects_dir(tmp_path)  # fresh mtime
+    adapter = create_adapter()
+    ctx, _ = recording_context(
+        "claude-code", tmp_path / "data", config_for(projects, idle_timeout_s=0.3)
+    )
+    await adapter.start(ctx)
+
+    (first,) = await adapter.discover_sessions()
+    assert first.state == SessionState.RUNNING  # fresh mtime -> cached as RUNNING
+
+    await asyncio.sleep(0.4)  # now idle past the timeout, file untouched -> cache hit
+    (second,) = await adapter.discover_sessions()
+    assert second.state == SessionState.COMPLETED  # re-evaluated, not the stale cache
+
+    await adapter.stop()
+
+
 async def run_watch(
     adapter: ClaudeCodeAdapter, observations: list[Observation], min_count: int
 ) -> asyncio.Task[None]:

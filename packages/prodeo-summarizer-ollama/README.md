@@ -12,7 +12,7 @@ ollama pull llama3.2                      # or any model you prefer
 ```
 
 ```bash
-export PRODEO_PLUGINS='{"ollama": {"base_url": "http://localhost:11434", "model": "llama3.2"}}'
+export PRODEO_PLUGINS='{"ollama": {"base_url": "http://127.0.0.1:11434", "model": "llama3.2"}}'
 # deliver the summary somewhere visible (it always goes to the event log too):
 export PRODEO_NOTIFY_RULES='{"summary.generated": ["ntfy"], ...}'
 ```
@@ -21,7 +21,7 @@ Config schema (validated at startup by the Plugin Host):
 
 | key | default | |
 |---|---|---|
-| `base_url` | `http://localhost:11434` | Ollama server |
+| `base_url` | `http://127.0.0.1:11434` | Ollama server (IPv4 literal: Ollama binds IPv4 only, and `localhost` costs ~2s per call resolving `::1` first) |
 | `model` | `llama3.2` | any pulled model |
 | `timeout_s` | `120` | per-call HTTP timeout |
 | `options` | `{}` | Ollama options passthrough (`temperature`, `num_ctx`, ...) |

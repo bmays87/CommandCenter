@@ -19,7 +19,10 @@ VERSION = "0.1.0"
 class OllamaConfig(BaseModel):
     """Validated by the Plugin Host before the summarizer is constructed."""
 
-    base_url: str = "http://localhost:11434"
+    #: 127.0.0.1, not ``localhost``: Ollama binds IPv4 only and ``localhost``
+    #: resolves to ``::1`` first, so each call pays ~2s for the failed IPv6
+    #: attempt before falling back.
+    base_url: str = "http://127.0.0.1:11434"
     model: str = "llama3.2"
     #: HTTP timeout for one summarize call. The Summary Service applies its
     #: own overall timeout as well; this one bounds the socket.

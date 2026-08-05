@@ -14,7 +14,9 @@ def test_defaults_make_ollama_the_brain() -> None:
     s = MjolnirSettings()
     assert s.intent_router == "llm"
     assert s.persona_rephraser == "ollama"
-    assert s.llm_base_url == "http://localhost:11434"
+    # 127.0.0.1, not localhost: Ollama is IPv4-only and the ::1 attempt that
+    # `localhost` tries first costs ~2s per call before it falls back.
+    assert s.llm_base_url == "http://127.0.0.1:11434"
     assert s.llm_model == "llama3.1:8b"
     # actions are classifiable by the LLM by default (ADR-0013)
     assert {"approve", "deny", "stop"} <= set(s.llm_intents)
@@ -35,7 +37,7 @@ def test_link_llm_identity_respects_explicit_engine_override() -> None:
     linked = _link_llm_identity(s)
     # explicit MJOLNIR_ENGINES wins for model; base_url still filled from canonical
     assert linked.engines["ollama"]["model"] == "bar"
-    assert linked.engines["ollama"]["base_url"] == "http://localhost:11434"
+    assert linked.engines["ollama"]["base_url"] == "http://127.0.0.1:11434"
     assert linked.engines["ollama"]["options"] == {"temperature": 0.1}
 
 
