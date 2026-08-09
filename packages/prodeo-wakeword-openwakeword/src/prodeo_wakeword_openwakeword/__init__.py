@@ -106,6 +106,14 @@ def manifest() -> PluginManifest:
         version=VERSION,
         config_model=OpenWakeWordConfig,
         factory=create_detector,
+        description=(
+            "Wake-word detection for Mjolnir. Runs on CPU; ships stock models "
+            "until a custom one is trained."
+        ),
+        publisher="Prodeo",
+        homepage="https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-wakeword-openwakeword",
+        license="Apache-2.0",
+        categories=["voice"],
     )
 
 

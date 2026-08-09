@@ -21,6 +21,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/extensions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Extensions
+         * @description Everything the Plugin Host discovered, including what it did not host.
+         */
+        get: operations["list_extensions_api_extensions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Extension Catalog
+         * @description The sanctioned index. Joined to the installed list by name in the UI.
+         */
+        get: operations["extension_catalog_api_extensions_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Extension */
+        get: operations["get_extension_api_extensions__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/{name}/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Extension Config */
+        get: operations["get_extension_config_api_extensions__name__config_get"];
+        /**
+         * Put Extension Config
+         * @description Persist an extension's config overlay; applies on the next restart.
+         *
+         *     Refused when the API has no token: these values become plugin
+         *     constructor arguments, which is a materially larger blast radius than
+         *     the rest of this read-mostly API, and an open server should not offer
+         *     it (ADR-0014).
+         */
+        put: operations["put_extension_config_api_extensions__name__config_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -353,6 +436,63 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** Catalog */
+        Catalog: {
+            /** Entries */
+            entries?: components["schemas"]["CatalogEntry"][];
+            /** Source */
+            source: string;
+        };
+        /**
+         * CatalogEntry
+         * @description One extension offered by the index.
+         */
+        CatalogEntry: {
+            /** Categories */
+            categories?: string[];
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Extension Class
+             * @default plugin
+             */
+            extension_class: string;
+            /**
+             * Homepage
+             * @default
+             */
+            homepage: string;
+            /**
+             * Kind
+             * @default
+             */
+            kind: string;
+            /**
+             * License
+             * @default
+             */
+            license: string;
+            /** Name */
+            name: string;
+            /**
+             * Package
+             * @default
+             */
+            package: string;
+            /**
+             * Publisher
+             * @default
+             */
+            publisher: string;
+            /**
+             * Version
+             * @default
+             */
+            version: string;
+        };
         /**
          * ClientPresence
          * @description One client's latest heartbeat.
@@ -463,6 +603,160 @@ export interface components {
             cursor: string | null;
             /** Events */
             events: components["schemas"]["Event"][];
+        };
+        /**
+         * ExtensionConfig
+         * @description Effective config for one extension, and where each key came from.
+         */
+        ExtensionConfig: {
+            /** Name */
+            name: string;
+            /**
+             * Restart Required
+             * @default false
+             */
+            restart_required: boolean;
+            /** Sources */
+            sources?: {
+                [key: string]: "environment" | "saved";
+            };
+            /** Values */
+            values?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ExtensionConfigRequest
+         * @description Replace one extension's saved config overlay.
+         */
+        ExtensionConfigRequest: {
+            /** Values */
+            values?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ExtensionDetail
+         * @description A single extension, with the schema its settings form is built from.
+         */
+        ExtensionDetail: {
+            /** Categories */
+            categories?: string[];
+            /** Config Schema */
+            config_schema?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Configurable
+             * @default false
+             */
+            configurable: boolean;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Error
+             * @default
+             */
+            error: string;
+            /**
+             * Homepage
+             * @default
+             */
+            homepage: string;
+            /**
+             * Hosted By Client
+             * @default false
+             */
+            hosted_by_client: boolean;
+            /** Kind */
+            kind?: ("adapter" | "notifier" | "summarizer" | "stt" | "tts" | "wakeword") | null;
+            /**
+             * License
+             * @default
+             */
+            license: string;
+            /** Name */
+            name: string;
+            /**
+             * Publisher
+             * @default
+             */
+            publisher: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "loaded" | "failed" | "hosted_by_client";
+            /**
+             * Version
+             * @default
+             */
+            version: string;
+        };
+        /** ExtensionListResponse */
+        ExtensionListResponse: {
+            /** Extensions */
+            extensions: components["schemas"]["ExtensionSummary"][];
+        };
+        /**
+         * ExtensionSummary
+         * @description One installed extension as the list view shows it.
+         */
+        ExtensionSummary: {
+            /** Categories */
+            categories?: string[];
+            /**
+             * Configurable
+             * @default false
+             */
+            configurable: boolean;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Error
+             * @default
+             */
+            error: string;
+            /**
+             * Homepage
+             * @default
+             */
+            homepage: string;
+            /**
+             * Hosted By Client
+             * @default false
+             */
+            hosted_by_client: boolean;
+            /** Kind */
+            kind?: ("adapter" | "notifier" | "summarizer" | "stt" | "tts" | "wakeword") | null;
+            /**
+             * License
+             * @default
+             */
+            license: string;
+            /** Name */
+            name: string;
+            /**
+             * Publisher
+             * @default
+             */
+            publisher: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "loaded" | "failed" | "hosted_by_client";
+            /**
+             * Version
+             * @default
+             */
+            version: string;
         };
         /**
          * ExternalInteractionRequest
@@ -833,6 +1127,143 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_extensions_api_extensions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionListResponse"];
+                };
+            };
+        };
+    };
+    extension_catalog_api_extensions_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Catalog"];
+                };
+            };
+        };
+    };
+    get_extension_api_extensions__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_extension_config_api_extensions__name__config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionConfig"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_extension_config_api_extensions__name__config_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtensionConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionConfig"];
                 };
             };
             /** @description Validation Error */

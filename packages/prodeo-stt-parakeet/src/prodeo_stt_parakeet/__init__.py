@@ -81,6 +81,14 @@ def manifest() -> PluginManifest:
         version=VERSION,
         config_model=ParakeetConfig,
         factory=create_stt,
+        description=(
+            "Higher-accuracy GPU speech-to-text via NVIDIA NeMo. Multi-GB "
+            "dependency chain - install only where the GPU lives."
+        ),
+        publisher="Prodeo",
+        homepage="https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-stt-parakeet",
+        license="Apache-2.0",
+        categories=["voice", "gpu-required", "large-download"],
     )
 
 

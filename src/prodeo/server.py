@@ -20,6 +20,7 @@ from prodeo.bus import InProcessEventBus
 from prodeo.config import Settings
 from prodeo.events import new_event
 from prodeo.events import types as ev
+from prodeo.extensions import BundledCatalog, ExtensionService, JsonFileConfigStore
 from prodeo.logging import configure_logging
 from prodeo.mediation import MediationService
 from prodeo.notify import Notifier
@@ -98,6 +99,18 @@ class Server:
             tz=settings.scheduler_tz,
             node=settings.node_name,
         )
+        # The extensions manager reads the host's inventory lazily: it is wired
+        # here, but the host does not populate it until start() (ADR-0014).
+        self.extension_config = JsonFileConfigStore(settings.extension_config_path)
+        self.extensions = ExtensionService(
+            inventory_fn=self.plugins.inventory,
+            env_config={
+                "adapter": settings.adapters,
+                "notifier": settings.notify_channels,
+                "summarizer": settings.plugins,
+            },
+            store=self.extension_config,
+        )
         self.api = ApiServer(
             create_app(
                 registry=self.registry,
@@ -109,6 +122,8 @@ class Server:
                 presence=self.presence,
                 node=settings.node_name,
                 version=__version__,
+                extensions=self.extensions,
+                catalog=BundledCatalog(),
                 api_token=settings.api_token,
                 dashboard_dir=settings.dashboard_dir,
             ),
@@ -130,6 +145,9 @@ class Server:
                 payload={"version": __version__},
             )
         )
+        # The saved overlay must land before load(): the host reads config at
+        # instantiation time, so applying it later would be a no-op.
+        self.plugins.apply_saved_config(await self.extension_config.load())
         loaded = await self.plugins.load()
         for adapter in loaded.adapters:
             self.adapters.add(adapter)

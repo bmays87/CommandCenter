@@ -52,6 +52,37 @@ them, so co-installing engines next to the server is harmless (ADR-0010).
 Unlike the server host, the engine loader fails fast: a voice client without
 its ears or voice has nothing to contain into.
 
+## Extensions: two classes over one host
+
+"Plugin" is the mechanism; **extension** is what a user installs. There are two
+classes (ADR-0014):
+
+| Class | Runs | Examples | Managed by |
+|---|---|---|---|
+| `plugin` | in-process, via an entry point | adapters, notifiers, summarizers, voice engines | a Plugin Host |
+| `app` | its own process, an API client | Mjölnir | (later) an installer + supervisor |
+
+An `app` is deliberately **not** a new `PluginKind`. Kinds describe what a
+plugin is *to its host*, and a separate process has no host — Mjölnir talks to
+the core over the same HTTP/WS API as the dashboard. Forcing it into
+`factory(config)` would break the property that makes it correct.
+
+`prodeo.extensions` is a presentation and configuration layer only: it reads the
+inventory `PluginHost.load()` recorded and never loads anything itself. The
+inventory includes entry points this process did not host — voice engines appear
+as `hosted_by_client`, failures as `failed` with their error — because the
+manager's job is to show what is installed, not only what worked here.
+
+Config has two layers: environment variables are the base, and what the manager
+saves to `<PRODEO_DATA_DIR>/extensions.json` overlays them per key. Validation
+runs against the merged result, so editing one field of a plugin whose required
+config comes from the environment works. The host loads once at boot, so saved
+changes apply on the next restart — the API says `restart_required` rather than
+pretending otherwise.
+
+Installation is still `uv pip install` plus a restart; the manager browses and
+configures, it does not yet install.
+
 ## Security Posture
 
 Plugins are ordinary Python running in-process: installing one is executing code.
@@ -60,3 +91,10 @@ identical to pip itself. A curated plugin index with signing is a roadmap item; 
 subprocess/WASM sandbox is explicitly out of scope until real demand exists
 (see ADR-0005). What we do enforce now: plugins receive a scoped context object, not
 the service container, so casual misuse of internals is at least inconvenient.
+
+The extensions manager does not change this posture: it browses and configures,
+and nothing in it runs an installer. The one write it does allow —
+`PUT /api/extensions/{name}/config` — is refused when `PRODEO_API_TOKEN` is
+unset, because saved values become plugin constructor arguments and an open
+server should not offer that. When installation does land, signing and publisher
+identity land with it, not after.

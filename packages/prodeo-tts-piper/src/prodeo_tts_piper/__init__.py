@@ -109,6 +109,14 @@ def manifest() -> PluginManifest:
         version=VERSION,
         config_model=PiperTtsConfig,
         factory=create_tts,
+        description=(
+            "Offline text-to-speech for Mjolnir. Note: GPL-3.0, which is why it "
+            "is an optional package rather than a core dependency."
+        ),
+        publisher="Prodeo",
+        homepage="https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-tts-piper",
+        license="GPL-3.0",
+        categories=["voice"],
     )
 
 

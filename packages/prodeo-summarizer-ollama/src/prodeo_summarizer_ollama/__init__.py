@@ -78,6 +78,14 @@ def manifest() -> PluginManifest:
         version=VERSION,
         config_model=OllamaConfig,
         factory=create_summarizer,
+        description=(
+            "Write the daily digest prose with a local Ollama model. "
+            "Also powers Mjolnir's persona rephraser."
+        ),
+        publisher="Prodeo",
+        homepage="https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-summarizer-ollama",
+        license="Apache-2.0",
+        categories=["summarizer", "local-llm"],
     )
 
 

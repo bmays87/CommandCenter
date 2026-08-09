@@ -31,7 +31,7 @@ from importlib.metadata import entry_points
 from typing import Any, Final, Literal, Protocol
 
 import structlog
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from prodeo.adapters.interface import ADAPTER_API_VERSION, AgentAdapter
 from prodeo.bus.interface import EventBus
@@ -70,6 +70,51 @@ class PluginManifest(BaseModel):
     #: Zero-argument for ``adapter``; ``factory(config)`` otherwise.
     factory: Callable[..., Any]
 
+    # Presentation metadata for the extensions manager (ADR-0014). All
+    # optional and defaulted, so every pre-existing manifest still validates
+    # and ``PLUGIN_API_VERSION`` does not move.
+    #: One line, shown under the name in the extensions list.
+    description: str = ""
+    #: Who publishes it - the trust signal a signed index will later assert.
+    publisher: str = ""
+    homepage: str = ""
+    #: SPDX identifier (e.g. ``Apache-2.0``). Piper's GPL-3.0 is why this
+    #: is worth surfacing before a user installs.
+    license: str = ""
+    #: Free-form grouping for browsing (e.g. ``["voice", "gpu"]``).
+    categories: list[str] = Field(default_factory=list)
+
+
+#: Why a discovered entry point is not contributing to this process.
+#: ``hosted_by_client`` is not a failure: voice engines are loaded by the
+#: mjolnir process, and the extensions manager must show them as installed.
+ExtensionStatus = Literal["loaded", "failed", "hosted_by_client"]
+
+
+@dataclass(frozen=True)
+class ExtensionInfo:
+    """One discovered entry point, as the extensions manager sees it.
+
+    Recorded during :meth:`PluginHost.load` so the inventory costs no second
+    import pass. ``manifest`` is ``None`` when resolution itself failed - the
+    entry point name is then all we know.
+    """
+
+    entry_point: str
+    status: ExtensionStatus
+    manifest: PluginManifest | None = None
+    error: str = ""
+
+    @property
+    def name(self) -> str:
+        return self.manifest.name if self.manifest else self.entry_point
+
+    def config_schema(self) -> dict[str, Any] | None:
+        """JSON Schema for this plugin's config, for generated settings forms."""
+        if self.manifest is None or self.manifest.config_model is None:
+            return None
+        return self.manifest.config_model.model_json_schema()
+
 
 @dataclass
 class LoadedPlugins:
@@ -93,6 +138,40 @@ def _installed_entry_points() -> Iterable[_EntryPointLike]:
     return entry_points(group=PLUGIN_ENTRY_POINT_GROUP)
 
 
+def resolve_manifest(ep: _EntryPointLike) -> PluginManifest:
+    """Load an entry point and normalize it to a :class:`PluginManifest`.
+
+    Module-level so the extensions inventory and the host share exactly one
+    implementation of "what a valid entry point looks like".
+    """
+    obj = ep.load()
+    if isinstance(obj, PluginManifest):
+        manifest = obj
+    else:
+        produced = obj()
+        if isinstance(produced, PluginManifest):
+            manifest = produced
+        elif isinstance(produced, AgentAdapter):
+            # Legacy Phase 1 contract: a bare zero-arg adapter factory.
+            return PluginManifest(
+                name=produced.metadata.name,
+                kind="adapter",
+                version=produced.metadata.version,
+                factory=lambda instance=produced: instance,
+            )
+        else:
+            raise TypeError(
+                f"entry point {ep.name!r} must resolve to a PluginManifest "
+                f"(or a zero-arg adapter factory), got {type(produced).__name__}"
+            )
+    if manifest.plugin_api_version != PLUGIN_API_VERSION:
+        raise RuntimeError(
+            f"plugin API version mismatch: {manifest.name!r} declares "
+            f"{manifest.plugin_api_version}, core provides {PLUGIN_API_VERSION}"
+        )
+    return manifest
+
+
 class PluginHost:
     """Loads every installed plugin; failures are contained, never fatal."""
 
@@ -114,21 +193,46 @@ class PluginHost:
             "summarizer": plugin_config or {},
         }
         self._entry_points = entry_points_fn
+        self._inventory: list[ExtensionInfo] = []
+        self._saved_config: dict[str, dict[str, Any]] = {}
+
+    def apply_saved_config(self, saved: dict[str, dict[str, Any]]) -> None:
+        """Overlay the extensions manager's persisted config, by plugin name.
+
+        Environment config is the base layer and this sits on top of it, per
+        key (ADR-0014). Call before :meth:`load`; the host reads config at
+        instantiation time.
+        """
+        self._saved_config = {k: dict(v) for k, v in saved.items()}
+
+    def inventory(self) -> list[ExtensionInfo]:
+        """What :meth:`load` discovered, for the extensions manager.
+
+        Populated by ``load()``; empty before it runs. Includes voice kinds
+        this host skipped and entry points that failed to resolve - the
+        manager's job is to show everything installed, not only what worked.
+        """
+        return list(self._inventory)
 
     async def load(self) -> LoadedPlugins:
         """Resolve every ``prodeo.plugins`` entry point into live instances."""
         loaded = LoadedPlugins()
+        self._inventory = []
         for ep in self._entry_points():
             try:
-                manifest = self._resolve_manifest(ep)
+                manifest = resolve_manifest(ep)
                 if manifest.kind in VOICE_KINDS:
                     # Voice engines belong to the mjolnir client process; a
                     # co-installed engine is not an error, just not ours.
                     _log.debug("plugins.skipped_voice_kind", plugin=manifest.name)
+                    self._inventory.append(
+                        ExtensionInfo(ep.name, "hosted_by_client", manifest=manifest)
+                    )
                     continue
                 self._instantiate(manifest, loaded)
             except Exception as exc:
                 _log.exception("plugins.load_failed", entry_point=ep.name)
+                self._inventory.append(ExtensionInfo(ep.name, "failed", error=str(exc)))
                 await self._bus.publish(
                     new_event(
                         ev.SYSTEM_PLUGIN_FAILED,
@@ -138,6 +242,7 @@ class PluginHost:
                     )
                 )
                 continue
+            self._inventory.append(ExtensionInfo(ep.name, "loaded", manifest=manifest))
             await self._bus.publish(
                 new_event(
                     ev.SYSTEM_PLUGIN_LOADED,
@@ -152,36 +257,11 @@ class PluginHost:
             )
         return loaded
 
-    def _resolve_manifest(self, ep: _EntryPointLike) -> PluginManifest:
-        obj = ep.load()
-        if isinstance(obj, PluginManifest):
-            manifest = obj
-        else:
-            produced = obj()
-            if isinstance(produced, PluginManifest):
-                manifest = produced
-            elif isinstance(produced, AgentAdapter):
-                # Legacy Phase 1 contract: a bare zero-arg adapter factory.
-                return PluginManifest(
-                    name=produced.metadata.name,
-                    kind="adapter",
-                    version=produced.metadata.version,
-                    factory=lambda instance=produced: instance,
-                )
-            else:
-                raise TypeError(
-                    f"entry point {ep.name!r} must resolve to a PluginManifest "
-                    f"(or a zero-arg adapter factory), got {type(produced).__name__}"
-                )
-        if manifest.plugin_api_version != PLUGIN_API_VERSION:
-            raise RuntimeError(
-                f"plugin API version mismatch: {manifest.name!r} declares "
-                f"{manifest.plugin_api_version}, core provides {PLUGIN_API_VERSION}"
-            )
-        return manifest
-
     def _instantiate(self, manifest: PluginManifest, loaded: LoadedPlugins) -> None:
-        raw = self._config_by_kind[manifest.kind].get(manifest.name, {})
+        raw = {
+            **self._config_by_kind[manifest.kind].get(manifest.name, {}),
+            **self._saved_config.get(manifest.name, {}),
+        }
         config: Any = raw
         if manifest.config_model is not None:
             config = manifest.config_model.model_validate(raw)

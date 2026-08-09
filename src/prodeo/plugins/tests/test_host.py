@@ -236,3 +236,62 @@ async def test_voice_engine_kinds_are_skipped_not_failed(bus: InProcessEventBus)
     events = await _drain(sub)
     assert [e.type for e in events] == [ev.SYSTEM_PLUGIN_LOADED]
     assert events[0].payload["plugin"] == "minimal"
+
+
+@pytest.mark.asyncio
+async def test_inventory_records_every_outcome(bus: InProcessEventBus) -> None:
+    def explodes() -> None:
+        raise ImportError("missing dependency")
+
+    voice = PluginManifest(name="piper", kind="tts", version="1.0", factory=lambda cfg: object())
+    host = _host(
+        bus,
+        [
+            FakeEntryPoint("ok", _adapter_manifest()),
+            FakeEntryPoint("piper", voice),
+            FakeEntryPoint("boom", explodes),
+        ],
+    )
+    assert host.inventory() == []  # nothing discovered until load() runs
+    await host.load()
+
+    by_name = {info.name: info for info in host.inventory()}
+    assert by_name["minimal"].status == "loaded"
+    # Installed, just not ours - the extensions manager must still show it.
+    assert by_name["piper"].status == "hosted_by_client"
+    assert by_name["boom"].status == "failed"
+    assert "missing dependency" in by_name["boom"].error
+    assert by_name["boom"].manifest is None  # never resolved
+
+
+@pytest.mark.asyncio
+async def test_inventory_exposes_config_schema(bus: InProcessEventBus) -> None:
+    manifest = PluginManifest(
+        name="echo", kind="notifier", version="1.0", config_model=EchoConfig, factory=EchoChannel
+    )
+    host = _host(bus, [FakeEntryPoint("echo", manifest)])
+    await host.load()
+
+    (info,) = host.inventory()
+    schema = info.config_schema()
+    assert schema is not None and "prefix" in schema["properties"]
+
+
+@pytest.mark.asyncio
+async def test_saved_config_overlays_environment_config(bus: InProcessEventBus) -> None:
+    manifest = PluginManifest(
+        name="echo",
+        kind="notifier",
+        version="1.0",
+        config_model=EchoConfig,
+        factory=lambda cfg: EchoChannel(cfg.prefix),
+    )
+    host = _host(
+        bus, [FakeEntryPoint("echo", manifest)], channel_config={"echo": {"prefix": "env"}}
+    )
+    host.apply_saved_config({"echo": {"prefix": "saved"}})
+    loaded = await host.load()
+
+    channel = loaded.channels["echo"]
+    assert isinstance(channel, EchoChannel)
+    assert channel.prefix == "saved"  # the manager's overlay wins per key

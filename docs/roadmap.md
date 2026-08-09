@@ -79,6 +79,14 @@ env vars, manual model downloads, and manual CUDA-runtime installs.
   (models, runtimes, extension payloads) must prompt for a target
   path/drive — never silently assume the system drive.** (The
   `start-mjolnir.ps1 -ModelsPath` flag is the interim CLI form of this.)
+  *In progress (ADR-0014):* browse and configure have shipped — `/api/extensions`
+  exposes the host's inventory (including entry points the server does not host),
+  config persists to `<PRODEO_DATA_DIR>/extensions.json` as a per-key overlay on
+  the environment layer, and the dashboard renders settings forms from each
+  plugin's JSON Schema. Extensions are modelled in two classes — in-process
+  `plugin` and out-of-process `app` (Mjölnir) — so the app path is not forced
+  into a plugin kind. Still to come: install/uninstall, enable/disable, and the
+  process supervisor an `app` needs.
 - **Guided voice-client setup**: install Mjölnir and its engine plugins,
   download the STT/TTS and wake-word models, write the config, and
   launch/register the client from the web UI — replacing the manual env vars

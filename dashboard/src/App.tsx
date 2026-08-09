@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api, getToken, setToken, UnauthorizedError } from "./api/client";
 import { useLiveEvents } from "./live";
 import { EventsView } from "./views/EventsView";
+import { ExtensionsView } from "./views/ExtensionsView";
 import { FleetView } from "./views/FleetView";
 import { InboxView } from "./views/InboxView";
 import { SessionView } from "./views/SessionView";
@@ -101,12 +102,15 @@ function Shell() {
   const sessionMatch = /^#\/session\/(.+)$/.exec(route);
   const isInbox = route === "#/inbox";
   const isEvents = route === "#/events";
+  const isExtensions = route === "#/extensions";
   const view = sessionMatch?.[1] ? (
     <SessionView id={sessionMatch[1]} />
   ) : isInbox ? (
     <InboxView />
   ) : isEvents ? (
     <EventsView />
+  ) : isExtensions ? (
+    <ExtensionsView />
   ) : (
     <FleetView />
   );
@@ -118,13 +122,18 @@ function Shell() {
         </a>
         <a
           href="#/"
-          className={`nav-link ${!sessionMatch && !isInbox && !isEvents ? "nav-active" : ""}`}
+          className={`nav-link ${
+            !sessionMatch && !isInbox && !isEvents && !isExtensions ? "nav-active" : ""
+          }`}
         >
           Fleet
         </a>
         <InboxLink active={isInbox} />
         <a href="#/events" className={`nav-link ${isEvents ? "nav-active" : ""}`}>
           Events
+        </a>
+        <a href="#/extensions" className={`nav-link ${isExtensions ? "nav-active" : ""}`}>
+          Extensions
         </a>
         <span className="topbar-note">command center</span>
       </nav>

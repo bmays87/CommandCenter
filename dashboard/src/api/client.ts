@@ -1,4 +1,14 @@
-import type { AnswerRequest, Interaction, LaunchRequest, ProdeoEvent, Session } from "./types";
+import type {
+  AnswerRequest,
+  Catalog,
+  ExtensionConfig,
+  ExtensionDetail,
+  ExtensionSummary,
+  Interaction,
+  LaunchRequest,
+  ProdeoEvent,
+  Session,
+} from "./types";
 
 const TOKEN_KEY = "prodeo_token";
 
@@ -55,6 +65,16 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   );
 }
 
+async function put<T>(path: string, body?: unknown): Promise<T> {
+  return parse<T>(
+    await fetch(path, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify(body ?? {}),
+    }),
+  );
+}
+
 export interface SessionListResponse {
   sessions: Session[];
 }
@@ -67,6 +87,10 @@ export interface EventListResponse {
 export interface InteractionListResponse {
   interactions: Interaction[];
   pending: number;
+}
+
+export interface ExtensionListResponse {
+  extensions: ExtensionSummary[];
 }
 
 export const api = {
@@ -103,6 +127,12 @@ export const api = {
   terminateSession: (id: string) => post<Session>(`/api/sessions/${id}/terminate`),
   promptSession: (id: string, prompt: string) =>
     post<Session>(`/api/sessions/${id}/prompt`, { prompt }),
+  extensions: () => get<ExtensionListResponse>("/api/extensions"),
+  extension: (name: string) => get<ExtensionDetail>(`/api/extensions/${name}`),
+  extensionCatalog: () => get<Catalog>("/api/extensions/catalog"),
+  extensionConfig: (name: string) => get<ExtensionConfig>(`/api/extensions/${name}/config`),
+  saveExtensionConfig: (name: string, values: Record<string, unknown>) =>
+    put<ExtensionConfig>(`/api/extensions/${name}/config`, { values }),
 };
 
 export function wsUrl(types: string, after?: string): string {

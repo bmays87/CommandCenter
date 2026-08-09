@@ -278,6 +278,14 @@ def manifest() -> PluginManifest:
         version=VERSION,
         config_model=FasterWhisperConfig,
         factory=create_stt,
+        description=(
+            "Default speech-to-text for Mjolnir. CPU-capable, and uses the GPU "
+            "when a CUDA 12 runtime is installed machine-wide."
+        ),
+        publisher="Prodeo",
+        homepage="https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-stt-fasterwhisper",
+        license="Apache-2.0",
+        categories=["voice", "gpu-optional"],
     )
 
 

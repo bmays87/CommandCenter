@@ -80,6 +80,42 @@ With `config_model=MyConfig` in the manifest, the host validates the user's
 config **before** your factory runs: misconfiguration is a clear startup
 error naming your plugin, not a `KeyError` at 3am.
 
+It earns you a settings UI for free, too: the extensions manager generates a
+form from your model's JSON Schema (ADR-0014), so field names, types, defaults,
+and enums come straight from the model. Pydantic `Field(description=...)` shows
+up as help text — worth writing for anything non-obvious.
+
+## Metadata for the extensions manager
+
+Optional, but it is what a user sees before deciding to trust your plugin:
+
+```python
+PluginManifest(
+    name="myagent",
+    kind="adapter",
+    version=VERSION,
+    factory=create_adapter,
+    description="One line: what it does, and any notable requirement.",
+    publisher="Your Name",
+    homepage="https://github.com/you/prodeo-adapter-myagent",
+    license="Apache-2.0",           # SPDX; be accurate, users filter on it
+    categories=["adapter"],
+)
+```
+
+All fields default to empty, so omitting them is valid and `plugin_api_version`
+stays 1. `license` is worth getting right — a GPL dependency is something a user
+should learn from the extensions list, not from a lawyer.
+
+## Config precedence
+
+Two layers reach your factory (ADR-0014): the environment
+(`PRODEO_PLUGINS` / `PRODEO_ADAPTERS` / `PRODEO_NOTIFY_CHANNELS`) is the base,
+and whatever the user saved in the extensions manager overlays it **per key**.
+Your factory sees the merged result and does not need to know which layer a
+value came from. Saved config lives in `<PRODEO_DATA_DIR>/extensions.json` and
+applies at the next server start — the host loads once at boot.
+
 ## Versioning
 
 - `PluginManifest.plugin_api_version` is the manifest/host contract

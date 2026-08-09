@@ -79,6 +79,87 @@
         "title": "AnswerRequest",
         "type": "object"
       },
+      "Catalog": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "Catalog",
+        "type": "object"
+      },
+      "CatalogEntry": {
+        "description": "One extension offered by the index.",
+        "properties": {
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "extension_class": {
+            "default": "plugin",
+            "title": "Extension Class",
+            "type": "string"
+          },
+          "homepage": {
+            "default": "",
+            "title": "Homepage",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "license": {
+            "default": "",
+            "title": "License",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "package": {
+            "default": "",
+            "title": "Package",
+            "type": "string"
+          },
+          "publisher": {
+            "default": "",
+            "title": "Publisher",
+            "type": "string"
+          },
+          "version": {
+            "default": "",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CatalogEntry",
+        "type": "object"
+      },
       "ClientPresence": {
         "description": "One client's latest heartbeat.",
         "properties": {
@@ -260,6 +341,261 @@
           "cursor"
         ],
         "title": "EventListResponse",
+        "type": "object"
+      },
+      "ExtensionConfig": {
+        "description": "Effective config for one extension, and where each key came from.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "restart_required": {
+            "default": false,
+            "title": "Restart Required",
+            "type": "boolean"
+          },
+          "sources": {
+            "additionalProperties": {
+              "enum": [
+                "environment",
+                "saved"
+              ],
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "object"
+          },
+          "values": {
+            "additionalProperties": true,
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ExtensionConfig",
+        "type": "object"
+      },
+      "ExtensionConfigRequest": {
+        "description": "Replace one extension's saved config overlay.",
+        "properties": {
+          "values": {
+            "additionalProperties": true,
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "title": "ExtensionConfigRequest",
+        "type": "object"
+      },
+      "ExtensionDetail": {
+        "description": "A single extension, with the schema its settings form is built from.",
+        "properties": {
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "config_schema": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Schema"
+          },
+          "configurable": {
+            "default": false,
+            "title": "Configurable",
+            "type": "boolean"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "error": {
+            "default": "",
+            "title": "Error",
+            "type": "string"
+          },
+          "homepage": {
+            "default": "",
+            "title": "Homepage",
+            "type": "string"
+          },
+          "hosted_by_client": {
+            "default": false,
+            "title": "Hosted By Client",
+            "type": "boolean"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "adapter",
+                  "notifier",
+                  "summarizer",
+                  "stt",
+                  "tts",
+                  "wakeword"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "license": {
+            "default": "",
+            "title": "License",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "publisher": {
+            "default": "",
+            "title": "Publisher",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "loaded",
+              "failed",
+              "hosted_by_client"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "default": "",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "status"
+        ],
+        "title": "ExtensionDetail",
+        "type": "object"
+      },
+      "ExtensionListResponse": {
+        "properties": {
+          "extensions": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionSummary"
+            },
+            "title": "Extensions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "extensions"
+        ],
+        "title": "ExtensionListResponse",
+        "type": "object"
+      },
+      "ExtensionSummary": {
+        "description": "One installed extension as the list view shows it.",
+        "properties": {
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "configurable": {
+            "default": false,
+            "title": "Configurable",
+            "type": "boolean"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "error": {
+            "default": "",
+            "title": "Error",
+            "type": "string"
+          },
+          "homepage": {
+            "default": "",
+            "title": "Homepage",
+            "type": "string"
+          },
+          "hosted_by_client": {
+            "default": false,
+            "title": "Hosted By Client",
+            "type": "boolean"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "adapter",
+                  "notifier",
+                  "summarizer",
+                  "stt",
+                  "tts",
+                  "wakeword"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "license": {
+            "default": "",
+            "title": "License",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "publisher": {
+            "default": "",
+            "title": "Publisher",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "loaded",
+              "failed",
+              "hosted_by_client"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "default": "",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "status"
+        ],
+        "title": "ExtensionSummary",
         "type": "object"
       },
       "ExternalInteractionRequest": {
@@ -1051,6 +1387,170 @@
           }
         },
         "summary": "List Events"
+      }
+    },
+    "/api/extensions": {
+      "get": {
+        "description": "Everything the Plugin Host discovered, including what it did not host.",
+        "operationId": "list_extensions_api_extensions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Extensions"
+      }
+    },
+    "/api/extensions/catalog": {
+      "get": {
+        "description": "The sanctioned index. Joined to the installed list by name in the UI.",
+        "operationId": "extension_catalog_api_extensions_catalog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Catalog"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Extension Catalog"
+      }
+    },
+    "/api/extensions/{name}": {
+      "get": {
+        "operationId": "get_extension_api_extensions__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Extension"
+      }
+    },
+    "/api/extensions/{name}/config": {
+      "get": {
+        "operationId": "get_extension_config_api_extensions__name__config_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionConfig"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Extension Config"
+      },
+      "put": {
+        "description": "Persist an extension's config overlay; applies on the next restart.\n\nRefused when the API has no token: these values become plugin\nconstructor arguments, which is a materially larger blast radius than\nthe rest of this read-mostly API, and an open server should not offer\nit (ADR-0014).",
+        "operationId": "put_extension_config_api_extensions__name__config_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtensionConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionConfig"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Extension Config"
       }
     },
     "/api/health": {

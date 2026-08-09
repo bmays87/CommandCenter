@@ -16,7 +16,7 @@ import structlog
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from ulid import ULID
 
 from prodeo.adapters import AdapterManager, LaunchSpec
@@ -29,11 +29,20 @@ from prodeo.errors import (
     InvalidScheduleError,
     ProdeoError,
     UnknownAdapterError,
+    UnknownExtensionError,
     UnknownInteractionError,
     UnknownScheduleError,
     UnknownSessionError,
 )
 from prodeo.events import Event, new_event
+from prodeo.extensions import (
+    Catalog,
+    ExtensionCatalog,
+    ExtensionConfig,
+    ExtensionDetail,
+    ExtensionService,
+    ExtensionSummary,
+)
 from prodeo.mediation import (
     Answer,
     Interaction,
@@ -55,6 +64,7 @@ _ERROR_STATUS: dict[type[ProdeoError], int] = {
     UnknownSessionError: 404,
     UnknownInteractionError: 404,
     UnknownScheduleError: 404,
+    UnknownExtensionError: 404,
     UnknownAdapterError: 400,
     CapabilityNotSupportedError: 400,
     InvalidScheduleError: 400,
@@ -178,6 +188,16 @@ class CreateScheduleRequest(BaseModel):
     options: dict[str, Any] = Field(default_factory=dict)
 
 
+class ExtensionListResponse(BaseModel):
+    extensions: list[ExtensionSummary]
+
+
+class ExtensionConfigRequest(BaseModel):
+    """Replace one extension's saved config overlay."""
+
+    values: dict[str, Any] = Field(default_factory=dict)
+
+
 def create_app(
     *,
     registry: SessionRegistry,
@@ -189,6 +209,8 @@ def create_app(
     presence: PresenceTracker,
     node: str,
     version: str,
+    extensions: ExtensionService | None = None,
+    catalog: ExtensionCatalog | None = None,
     api_token: str | None = None,
     dashboard_dir: Path | None = None,
 ) -> FastAPI:
@@ -439,6 +461,50 @@ def create_app(
         )
         await bus.publish(event)
         return event
+
+    def _extensions() -> ExtensionService:
+        if extensions is None:  # not wired (schema export, focused tests)
+            raise HTTPException(status_code=503, detail="extensions manager not configured")
+        return extensions
+
+    @app.get("/api/extensions", response_model=ExtensionListResponse, dependencies=[auth])
+    async def list_extensions() -> ExtensionListResponse:
+        """Everything the Plugin Host discovered, including what it did not host."""
+        return ExtensionListResponse(extensions=_extensions().list())
+
+    @app.get("/api/extensions/catalog", response_model=Catalog, dependencies=[auth])
+    async def extension_catalog() -> Catalog:
+        """The sanctioned index. Joined to the installed list by name in the UI."""
+        if catalog is None:
+            raise HTTPException(status_code=503, detail="extensions catalog not configured")
+        return await catalog.fetch()
+
+    @app.get("/api/extensions/{name}", response_model=ExtensionDetail, dependencies=[auth])
+    async def get_extension(name: str) -> ExtensionDetail:
+        return _extensions().get(name)
+
+    @app.get("/api/extensions/{name}/config", response_model=ExtensionConfig, dependencies=[auth])
+    async def get_extension_config(name: str) -> ExtensionConfig:
+        return await _extensions().config(name)
+
+    @app.put("/api/extensions/{name}/config", response_model=ExtensionConfig, dependencies=[auth])
+    async def put_extension_config(name: str, body: ExtensionConfigRequest) -> ExtensionConfig:
+        """Persist an extension's config overlay; applies on the next restart.
+
+        Refused when the API has no token: these values become plugin
+        constructor arguments, which is a materially larger blast radius than
+        the rest of this read-mostly API, and an open server should not offer
+        it (ADR-0014).
+        """
+        if api_token is None:
+            raise HTTPException(
+                status_code=403,
+                detail="set PRODEO_API_TOKEN to change extension config",
+            )
+        try:
+            return await _extensions().set_config(name, body.values)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors(include_url=False)) from exc
 
     @app.websocket("/api/ws/events")
     async def event_stream(ws: WebSocket) -> None:

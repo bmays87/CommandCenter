@@ -8,6 +8,11 @@ export type SessionState = Session["state"];
 export type Interaction = components["schemas"]["Interaction"];
 export type AnswerRequest = components["schemas"]["AnswerRequest"];
 export type LaunchRequest = components["schemas"]["LaunchRequest"];
+export type ExtensionSummary = components["schemas"]["ExtensionSummary"];
+export type ExtensionDetail = components["schemas"]["ExtensionDetail"];
+export type ExtensionConfig = components["schemas"]["ExtensionConfig"];
+export type CatalogEntry = components["schemas"]["CatalogEntry"];
+export type Catalog = components["schemas"]["Catalog"];
 
 export const ACTIVE_STATES: readonly string[] = [
   "running",

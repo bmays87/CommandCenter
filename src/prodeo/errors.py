@@ -43,6 +43,10 @@ class UnknownInteractionError(ProdeoError):
     """An operation referenced an interaction the mediation service does not know."""
 
 
+class UnknownExtensionError(ProdeoError):
+    """An operation referenced an extension that is not installed."""
+
+
 class InteractionAlreadyResolvedError(ProdeoError):
     """An interaction was answered after it had already been resolved.
 

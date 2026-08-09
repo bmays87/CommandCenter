@@ -1,0 +1,110 @@
+[
+  {
+    "name": "claude-code",
+    "extension_class": "plugin",
+    "kind": "adapter",
+    "version": "0.1.0",
+    "description": "Supervise Claude Code sessions: live and historical observation, plus launch, terminate, and prompt via the Agent SDK.",
+    "publisher": "Prodeo",
+    "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-adapter-claude-code",
+    "license": "Apache-2.0",
+    "categories": ["adapter"],
+    "package": "prodeo-adapter-claude-code"
+  },
+  {
+    "name": "aider",
+    "extension_class": "plugin",
+    "kind": "adapter",
+    "version": "0.1.0",
+    "description": "Observe Aider sessions. Observation only - no launch or control.",
+    "publisher": "Prodeo",
+    "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-adapter-aider",
+    "license": "Apache-2.0",
+    "categories": ["adapter"],
+    "package": "prodeo-adapter-aider"
+  },
+  {
+    "name": "codex",
+    "extension_class": "plugin",
+    "kind": "adapter",
+    "version": "0.1.0",
+    "description": "Observe Codex CLI sessions. Observation only - no launch or control.",
+    "publisher": "Prodeo",
+    "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-adapter-codex",
+    "license": "Apache-2.0",
+    "categories": ["adapter"],
+    "package": "prodeo-adapter-codex"
+  },
+  {
+    "name": "ollama",
+    "extension_class": "plugin",
+    "kind": "summarizer",
+    "version": "0.1.0",
+    "description": "Write the daily digest prose with a local Ollama model. Also powers Mjolnir's persona rephraser.",
+    "publisher": "Prodeo",
+    "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-summarizer-ollama",
+    "license": "Apache-2.0",
+    "categories": ["summarizer", "local-llm"],
+    "package": "prodeo-summarizer-ollama"
+  },
+  {
+    "name": "mjolnir",
+    "extension_class": "app",
+    "kind": "",
+    "version": "0.1.0",
+    "description": "The offline voice client: wake word, speech-to-text, and a spoken assistant that answers questions and approves permissions by voice.",
+    "publisher": "Prodeo",
+    "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-mjolnir",
+    "license": "Apache-2.0",
+    "categories": ["voice", "client"],
+    "package": "prodeo-mjolnir[audio]"
+  },
+  {
+    "name": "openwakeword",
+    "extension_class": "plugin",
+    "kind": "wakeword",
+    "version": "0.1.0",
+    "description": "Wake-word detection for Mjolnir. Runs on CPU; ships stock models until a custom one is trained.",
+    "publisher": "Prodeo",
+    "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-wakeword-openwakeword",
+    "license": "Apache-2.0",
+    "categories": ["voice"],
+    "package": "prodeo-wakeword-openwakeword"
+  },
+  {
+    "name": "faster-whisper",
+    "extension_class": "plugin",
+    "kind": "stt",
+    "version": "0.1.0",
+    "description": "Default speech-to-text for Mjolnir. CPU-capable, and uses the GPU when a CUDA 12 runtime is installed machine-wide.",
+    "publisher": "Prodeo",
+    "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-stt-fasterwhisper",
+    "license": "Apache-2.0",
+    "categories": ["voice", "gpu-optional"],
+    "package": "prodeo-stt-fasterwhisper"
+  },
+  {
+    "name": "parakeet",
+    "extension_class": "plugin",
+    "kind": "stt",
+    "version": "0.1.0",
+    "description": "Higher-accuracy GPU speech-to-text via NVIDIA NeMo. Multi-GB dependency chain - install only where the GPU lives.",
+    "publisher": "Prodeo",
+    "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-stt-parakeet",
+    "license": "Apache-2.0",
+    "categories": ["voice", "gpu-required", "large-download"],
+    "package": "prodeo-stt-parakeet"
+  },
+  {
+    "name": "piper",
+    "extension_class": "plugin",
+    "kind": "tts",
+    "version": "0.1.0",
+    "description": "Offline text-to-speech for Mjolnir. Note: GPL-3.0, which is why it is an optional package rather than a core dependency.",
+    "publisher": "Prodeo",
+    "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-tts-piper",
+    "license": "GPL-3.0",
+    "categories": ["voice"],
+    "package": "prodeo-tts-piper"
+  }
+]

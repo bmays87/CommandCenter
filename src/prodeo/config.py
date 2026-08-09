@@ -95,6 +95,15 @@ class Settings(BaseSettings):
         return self.data_dir / "events.db"
 
     @property
+    def extension_config_path(self) -> Path:
+        """Where the extensions manager persists per-plugin config overlays.
+
+        Under ``data_dir`` and so deliberately outside the virtualenv: an
+        ``uv sync`` removes anything in ``.venv`` the lock does not name.
+        """
+        return self.data_dir / "extensions.json"
+
+    @property
     def archive_dir(self) -> Path:
         return self.data_dir / "archive"
 

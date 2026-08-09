@@ -11,7 +11,17 @@ def create_adapter() -> AiderAdapter:
 
 def manifest() -> PluginManifest:
     """Entry point (``prodeo.plugins`` group)."""
-    return PluginManifest(name="aider", kind="adapter", version=VERSION, factory=create_adapter)
+    return PluginManifest(
+        name="aider",
+        kind="adapter",
+        version=VERSION,
+        factory=create_adapter,
+        description="Observe Aider sessions. Observation only - no launch or control.",
+        publisher="Prodeo",
+        homepage="https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-adapter-aider",
+        license="Apache-2.0",
+        categories=["adapter"],
+    )
 
 
 __all__ = ["AiderAdapter", "create_adapter", "manifest"]
