@@ -114,7 +114,7 @@
     "tier": "bundled",
     "tier_note": "Ships with Command Center; installed by `uv sync --all-groups`.",
     "requires": {
-      "note": "Runs on CPU anywhere. Uses the GPU only when CUDA 12 and cuDNN 9 are installed machine-wide."
+      "note": "Runs on CPU anywhere. Its only GPU path is CUDA 12 + cuDNN 9 installed machine-wide; for GPU without CUDA use parakeet with DirectML instead."
     },
     "config_defaults": {
       "download_root": "{models_dir}/whisper"
@@ -137,7 +137,7 @@
     "tier": "bundled",
     "tier_note": "Ships with Command Center; installed by `uv sync --all-groups`.",
     "requires": {
-      "note": "Downloads a ~600MB model on first use. Runs on CPU; for GPU install onnxruntime-gpu (CUDA) or onnxruntime-directml and set the `providers` config key."
+      "note": "GPU without CUDA: install onnxruntime-directml and set providers to [\"DmlExecutionProvider\"] - works on any DX12 GPU. Downloads a ~600MB model on first use, and runs on CPU if you skip the GPU entirely."
     },
     "config_defaults": {
       "download_root": "{models_dir}/parakeet"

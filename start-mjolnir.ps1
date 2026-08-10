@@ -109,29 +109,51 @@ try {
 #    as undeclared. Mirrors _cuda_runtime_dirs() in prodeo_stt_fasterwhisper.
 function Get-CudaRuntimeDir {
     param([string]$VenvRoot = $root)
-    $dirs = @()
-    # CUDA_PATH itself is skipped: it points at whichever toolkit was installed
-    # last, routinely an older major that has no cublas64_12.dll.
+    $roots = @()
+
+    # 1. The registry is the authority: it records where each component was
+    #    actually installed, on whatever drive. Globbing %ProgramFiles% once
+    #    reported a real cuDNN on F: as missing.
+    $uninstall = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    )
+    $roots += @(Get-ItemProperty $uninstall -ErrorAction SilentlyContinue |
+        Where-Object { $_.DisplayName -match 'CUDNN|CUDA Toolkit|CUDART|CUDA Runtime' } |
+        ForEach-Object { $_.InstallLocation } |
+        Where-Object { $_ })
+
+    # 2. Explicitly-versioned env vars. Bare CUDA_PATH is skipped: it points at
+    #    whichever toolkit was installed last, routinely an older major with no
+    #    cublas64_12.dll.
     Get-ChildItem env: |
         Where-Object { $_.Name -like 'CUDA_PATH_V12_*' -or $_.Name -like 'CUDA_PATH_V13_*' } |
-        ForEach-Object { $dirs += (Join-Path $_.Value 'bin') }
+        ForEach-Object { $roots += $_.Value }
+    if ($env:CUDNN_PATH) { $roots += $env:CUDNN_PATH }
+
+    # 3. Default locations, for installs the registry does not describe.
     $toolkit = Join-Path $env:ProgramFiles 'NVIDIA GPU Computing Toolkit\CUDA'
-    $dirs += @(Get-ChildItem $toolkit -Directory -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -match '^v1[23]\.' } | ForEach-Object { Join-Path $_.FullName 'bin' })
-    # cuDNN 9 ships as its own installer with its own tree, DLLs one level
-    # deeper under a CUDA-major folder (bin\12.9); older layouts use bin\.
+    $roots += @(Get-ChildItem $toolkit -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^v1[23]\.' } | ForEach-Object { $_.FullName })
     $cudnn = Join-Path $env:ProgramFiles 'NVIDIA\CUDNN'
-    $dirs += @(Get-ChildItem $cudnn -Directory -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -like 'v9.*' } | ForEach-Object {
-            $bin = Join-Path $_.FullName 'bin'
-            @(Get-ChildItem $bin -Directory -ErrorAction SilentlyContinue |
-                ForEach-Object { $_.FullName }) + @($bin)
-        })
-    if ($env:CUDNN_PATH) { $dirs += (Join-Path $env:CUDNN_PATH 'bin') }
-    # Last resort: the pip wheels, if someone installed them into this venv.
+    $roots += @(Get-ChildItem $cudnn -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like 'v9.*' } | ForEach-Object { $_.FullName })
+
+    # Three bin layouts exist in the wild: <root>\bin (toolkit),
+    # <root>\bin\12.9 (older cuDNN), and <root>\bin\12.9\x64 (cuDNN 9.25).
+    $dirs = @()
+    foreach ($r in $roots) {
+        $bin = Join-Path $r 'bin'
+        $dirs += $r
+        $dirs += $bin
+        $dirs += @(Get-ChildItem $bin -Directory -ErrorAction SilentlyContinue |
+            ForEach-Object { $_.FullName; (Join-Path $_.FullName 'x64') })
+    }
+
+    # 4. Last resort: the pip wheels, if someone installed them into this venv.
     $dirs += @(Get-ChildItem (Join-Path $VenvRoot '.venv\Lib\site-packages\nvidia') `
             -Directory -ErrorAction SilentlyContinue | ForEach-Object { Join-Path $_.FullName 'bin' })
-    return @($dirs | Where-Object { Test-Path $_ } | Select-Object -Unique)
+    return @($dirs | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique)
 }
 
 if (-not $NoCudaCheck) {
@@ -147,14 +169,20 @@ if (-not $NoCudaCheck) {
             }
             if ($missing) {
                 Write-Host ""
-                Write-Host "NVIDIA GPU found, but the CUDA runtime is incomplete — missing $($missing -join ', ')." -ForegroundColor Yellow
-                Write-Host "Speech-to-text will fall back to the CPU (slower) until it is installed." -ForegroundColor Yellow
-                Write-Host "Install once, machine-wide (each installer asks where to put itself):"
-                Write-Host "    winget install --id Nvidia.CUDA -e --version 12.9"
-                Write-Host "      ^ CUDA Toolkit 12.x. The winget default is 13.x, which does NOT work:"
-                Write-Host "        CTranslate2 links cublas64_12.dll." -ForegroundColor DarkGray
-                Write-Host "    cuDNN 9: https://developer.nvidia.com/cudnn-downloads"
-                Write-Host "Then open a new shell so the updated PATH is picked up." -ForegroundColor DarkGray
+                Write-Host "NVIDIA GPU found, but no CUDA runtime — missing $($missing -join ', ')." -ForegroundColor Yellow
+                Write-Host "Speech-to-text will run on the CPU, which is fine for short commands." -ForegroundColor Yellow
+                Write-Host ""
+                Write-Host "If you want the GPU, there are two routes:" -ForegroundColor Yellow
+                Write-Host "  1. DirectML — no CUDA at all, works on any DX12 GPU (the cheap one):"
+                Write-Host "       uv pip install onnxruntime-directml"
+                Write-Host "       MJOLNIR_STT_PLUGIN=parakeet, providers [`"DmlExecutionProvider`"]"
+                Write-Host "       ^ replaces the stock onnxruntime; 'uv sync' puts it back." -ForegroundColor DarkGray
+                Write-Host "  2. CUDA — the only GPU path faster-whisper has (~3GB toolkit):"
+                Write-Host "       winget install --id Nvidia.CUDA -e --version 12.9"
+                Write-Host "       ^ 12.x specifically. The winget default is 13.x, which does NOT" -ForegroundColor DarkGray
+                Write-Host "         work: CTranslate2 links cublas64_12.dll." -ForegroundColor DarkGray
+                Write-Host "       cuDNN 9: https://developer.nvidia.com/cudnn-downloads"
+                Write-Host "       Then open a new shell so the updated PATH is picked up." -ForegroundColor DarkGray
                 Write-Host "(Don't pip-install nvidia-* into .venv — the next 'uv sync' removes it.)" -ForegroundColor DarkGray
                 Write-Host ""
             } else {

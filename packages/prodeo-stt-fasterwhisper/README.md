@@ -17,6 +17,12 @@ follows with `float16` on GPU and `int8` on CPU. Pin either to override.
 
 ## GPU (CUDA)
 
+**Only needed for this engine.** CTranslate2 has no DirectML or ROCm path, so
+CUDA is the sole route to running faster-whisper on a GPU. If you want GPU
+speech-to-text without a ~3GB toolkit, use `prodeo-stt-parakeet` with DirectML
+instead — same protocol, any DX12 GPU, no CUDA. And for short voice commands,
+CPU `int8` here is already fast enough that neither may be worth the trouble.
+
 CUDA is a **machine-wide prerequisite, not a Python dependency of this package**.
 It is deliberately not declared in `pyproject.toml`: `uv sync` is exact and
 deletes anything the lock doesn't call for, so `pip install nvidia-cublas-cu12

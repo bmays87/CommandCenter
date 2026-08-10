@@ -50,11 +50,26 @@ tests it. A future engine with a heavy stack (XTTS-class TTS, say) is exactly
 why STT and TTS are separate plugin packages. The voice client works CPU-only
 out of the box.
 
-**GPU is automatic.** The default engines detect CUDA themselves and use it when
-present, with no user toggle: faster-whisper picks `cuda`/`float16` when
-CTranslate2 sees a device (else `cpu`/`int8`), Piper enables the CUDA execution
-provider only when onnxruntime exposes it, and both fall back to CPU (with a
-warning) if the GPU load fails. Ollama manages its own GPU (ADR-0013).
+**GPU is optional, and automatic when it is there.** The default engines detect
+what they can use and degrade quietly: faster-whisper picks `cuda`/`float16`
+only when CTranslate2 sees a device *and* the CUDA 12 runtime is actually
+present (else `cpu`/`int8`), Piper enables the CUDA execution provider only
+when onnxruntime exposes it, and both fall back to CPU with a warning if a GPU
+load fails. Ollama manages its own GPU (ADR-0013).
+
+Which GPU route is available depends on the engine, and they are not
+interchangeable:
+
+| Engine | GPU route | Needs CUDA |
+|---|---|---|
+| faster-whisper | CTranslate2 | **Yes** — its only GPU path |
+| parakeet | ONNX Runtime, incl. `DmlExecutionProvider` | **No** — DirectML drives any DX12 GPU |
+| piper | upstream exposes only `use_cuda` | CPU otherwise; irrelevant for a 63MB voice |
+
+So the cheap way to use a GPU is Parakeet on DirectML, not CUDA. For 2–5 second
+utterances CPU is fast enough that neither is required — the environment view
+(`GET /api/system/environment`) reports which routes exist rather than implying
+CUDA is mandatory.
 
 ## Intent Handling
 

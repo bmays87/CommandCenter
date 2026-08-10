@@ -30,8 +30,13 @@ ollama pull llama3.1:8b
 
 Without a reachable Ollama, Mjölnir still works on the deterministic grammar
 (it logs `mjolnir.llm_unreachable` and skips the LLM understanding/personality).
-GPU is used automatically when present — STT/TTS auto-detect CUDA and fall back
-to CPU; Ollama manages its own GPU.
+A GPU is optional. The engines use one automatically when a usable runtime is
+present and fall back to CPU otherwise, which is fast enough for short
+commands. If you do want acceleration, the cheapest route is **DirectML** — no
+CUDA toolkit, any DX12 GPU — by switching STT to `parakeet`
+(`uv pip install onnxruntime-directml`, `providers: ["DmlExecutionProvider"]`).
+CUDA 12 + cuDNN 9 is only necessary for faster-whisper, which has no other GPU
+path. Ollama manages its own GPU.
 
 Piper needs a voice model downloaded once before first run — without it the
 client exits at startup with a `voice_path` validation error. Download it to a

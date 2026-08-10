@@ -43,20 +43,38 @@ they land — it sets `HF_HOME`, and an `HF_HOME` you already exported wins. Set
 download entirely. `quantization: int8` gets a smaller, faster model for some
 accuracy.
 
-## GPU
+## GPU — the route that needs no CUDA
 
-The stock `onnxruntime` is CPU-only, and that is the default here. For GPU,
-install the matching runtime and name the provider:
+The stock `onnxruntime` is CPU-only. On Windows, **DirectML is the recommended
+way to use a GPU for speech-to-text**: it needs no CUDA toolkit, no cuDNN, and
+works on any DX12 GPU — NVIDIA, AMD, or Intel.
 
 ```bash
-uv pip install onnxruntime-gpu        # CUDA
-# or: uv pip install onnxruntime-directml   # any GPU on Windows
+uv pip install onnxruntime-directml
 ```
 
 ```json
-{"parakeet": {"providers": ["CUDAExecutionProvider"]}}
+{"parakeet": {"providers": ["DmlExecutionProvider"]}}
 ```
 
-DirectML is worth knowing about on Windows: it needs no CUDA toolkit at all,
-which is a materially lower bar than the CUDA 12 + cuDNN 9 that faster-whisper
-requires for GPU work.
+with `MJOLNIR_STT_PLUGIN=parakeet`.
+
+`onnxruntime`, `onnxruntime-gpu`, and `onnxruntime-directml` **all provide the
+same `onnxruntime` module and are mutually exclusive** — installing one
+replaces the others, for every engine in the process, not just this one. And
+because it is not in the lock, the next `uv sync` puts the stock package back.
+
+For CUDA instead, `uv pip install onnxruntime-gpu` and name
+`CUDAExecutionProvider`.
+
+### What this does not cover
+
+- **faster-whisper has no DirectML path.** Its CTranslate2 backend is CUDA-only,
+  so if you want *that* engine on the GPU you still need CUDA 12 + cuDNN 9.
+  Running Parakeet on DirectML instead avoids the whole toolkit.
+- **Piper (TTS) stays on CPU.** Its upstream API exposes only `use_cuda`, with
+  no provider selection, so DirectML is not reachable. A non-issue for a 63MB
+  voice model.
+
+None of this is required. For 2–5 second voice commands CPU transcription is
+already fast; treat the GPU as an upgrade, not a prerequisite.

@@ -62,7 +62,7 @@ async def report(models_dir: str = "", env: Environment | None = None) -> Enviro
     """Probe the host. Never raises; a broken check reports itself."""
     host = env or detect()
     checks: list[EnvironmentCheck] = []
-    for probe in (_gpu, _cuda, _audio, _disk):
+    for probe in (_gpu, _gpu_stt, _audio, _disk):
         try:
             checks.append(probe(host, models_dir))
         except Exception as exc:  # a probe must not take the page down
@@ -84,51 +84,117 @@ async def report(models_dir: str = "", env: Environment | None = None) -> Enviro
 
 
 def _gpu(host: Environment, _models_dir: str) -> EnvironmentCheck:
+    # Only NVIDIA is detectable cheaply. A DirectML-capable AMD or Intel GPU
+    # will read as "none detected" here while still working, so this is
+    # informational and never the thing that gates anything.
     return EnvironmentCheck(
         id="gpu",
         label="NVIDIA GPU",
         ok=host.nvidia_gpu,
+        relevant=host.nvidia_gpu,
         detail="detected" if host.nvidia_gpu else "none detected",
-        fix="" if host.nvidia_gpu else "Speech-to-text runs on the CPU, just slower.",
+        fix=""
+        if host.nvidia_gpu
+        else "Not required. DirectML drives any DX12 GPU, and CPU works too.",
     )
 
 
-def _cuda(host: Environment, _models_dir: str) -> EnvironmentCheck:
-    if not host.nvidia_gpu:
-        return EnvironmentCheck(
-            id="cuda",
-            label="CUDA runtime",
-            ok=True,
-            relevant=False,
-            detail="not applicable without an NVIDIA GPU",
-        )
+def _onnx_providers() -> list[str]:
+    """Execution providers the installed onnxruntime exposes.
+
+    Imported here and contained: onnxruntime is an engine dependency, and core
+    must not require it to answer questions about the host.
+    """
+    try:
+        import onnxruntime
+
+        return list(onnxruntime.get_available_providers())
+    except Exception:
+        return []
+
+
+def _gpu_stt(host: Environment, _models_dir: str) -> EnvironmentCheck:
+    """Whether *any* GPU route for speech-to-text exists.
+
+    Framed around the goal rather than one implementation of it: there are two
+    unrelated routes, and reporting only the CUDA one made a 3GB toolkit look
+    mandatory when it is not.
+
+    - **DirectML** (`onnxruntime-directml`) drives Parakeet on any DX12 GPU
+      with no CUDA at all. The cheap option, Windows only.
+    - **CUDA** is required for faster-whisper, whose CTranslate2 backend has no
+      other GPU path, and is also usable by Parakeet via `onnxruntime-gpu`.
+
+    Piper is deliberately absent: its upstream API exposes only ``use_cuda``,
+    so TTS has no DirectML route. Irrelevant in practice for a 63MB voice.
+    """
     if host.platform != "win32":
-        # Linux resolves a system CUDA through ldconfig; probing it properly
-        # is a different job, and claiming otherwise would be a guess.
+        # DirectML is Windows-only, and a Linux CUDA resolves through ldconfig
+        # which we do not probe. Claiming a result would be a guess.
         return EnvironmentCheck(
-            id="cuda",
-            label="CUDA runtime",
+            id="gpu_stt",
+            label="GPU speech-to-text",
             ok=True,
             relevant=False,
             detail="not checked on this platform",
         )
-    dirs = cuda_runtime_dirs()
-    missing = missing_cuda_libraries(dirs)
+
+    providers = _onnx_providers()
+    routes: list[str] = []
+    if "DmlExecutionProvider" in providers:
+        routes.append("DirectML (parakeet)")
+    if "CUDAExecutionProvider" in providers:
+        routes.append("CUDA via onnxruntime (parakeet)")
+    missing = missing_cuda_libraries(cuda_runtime_dirs())
     if not missing:
+        routes.append("CUDA (faster-whisper)")
+
+    if routes:
         return EnvironmentCheck(
-            id="cuda", label="CUDA runtime", ok=True, detail=f"found in {dirs[0]}"
+            id="gpu_stt", label="GPU speech-to-text", ok=True, detail=", ".join(routes)
         )
     return EnvironmentCheck(
-        id="cuda",
-        label="CUDA runtime",
+        id="gpu_stt",
+        label="GPU speech-to-text",
         ok=False,
-        detail=f"missing {', '.join(missing)}",
+        detail="no GPU execution path installed - transcription runs on the CPU",
         fix=(
-            "Install CUDA Toolkit 12.x and cuDNN 9 machine-wide, then restart. "
-            f"The winget default is 13.x, which does not work. cuDNN: {CUDNN_DOWNLOAD_URL}"
+            "Optional; CPU is fast enough for short commands. The cheap upgrade "
+            "is DirectML, which needs no CUDA and works on any DX12 GPU - then "
+            "set the STT engine to parakeet with "
+            'providers ["DmlExecutionProvider"]. Note it replaces the stock '
+            f"onnxruntime. {_cuda_gap(missing)}"
         ),
-        fix_command=CUDA_INSTALL_HINT,
+        fix_command="uv pip install onnxruntime-directml",
     )
+
+
+def _cuda_gap(missing: list[str]) -> str:
+    """What faster-whisper's CUDA route still needs, naming only what is absent.
+
+    Telling someone to install cuDNN when they already have it is how you get
+    ignored - and it happened, because discovery used to miss a cuDNN on a
+    non-system drive.
+    """
+    needs_cublas = "cublas64_12.dll" in missing
+    needs_cudnn = any(name.startswith("cudnn") for name in missing)
+    if needs_cublas and needs_cudnn:
+        return (
+            "faster-whisper on the GPU additionally needs CUDA 12 and cuDNN 9 "
+            f"machine-wide ({CUDA_INSTALL_HINT}; cuDNN: {CUDNN_DOWNLOAD_URL})."
+        )
+    if needs_cublas:
+        return (
+            "cuDNN 9 is already installed; faster-whisper on the GPU needs only "
+            f"the CUDA 12 toolkit ({CUDA_INSTALL_HINT}) - note 12.x, not the "
+            "13.x winget default."
+        )
+    if needs_cudnn:
+        return (
+            "CUDA 12 is already installed; faster-whisper on the GPU needs only "
+            f"cuDNN 9 ({CUDNN_DOWNLOAD_URL})."
+        )
+    return ""
 
 
 def _audio(host: Environment, _models_dir: str) -> EnvironmentCheck:
