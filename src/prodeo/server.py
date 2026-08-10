@@ -9,7 +9,10 @@ interrupted.
 
 import asyncio
 import contextlib
+import os
+import shutil
 import signal
+import sys
 
 import structlog
 
@@ -50,6 +53,11 @@ class Server:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        # Set to end run()'s idle wait, by a signal handler or by the restart
+        # endpoint. One event for both, so there is a single shutdown path.
+        self.shutdown = asyncio.Event()
+        #: Whether run() should tell main() to re-exec rather than exit.
+        self.restart_wanted = False
         self.bus = InProcessEventBus()
         self.store = SqliteEventStore(settings.event_db_path)
         self.recorder = EventRecorder(self.bus, self.store)
@@ -156,6 +164,9 @@ class Server:
             autostart_fn=self._app_autostart,
             server_url_fn=lambda: f"http://{settings.api_host}:{self.api.port}",
             api_token=settings.api_token,
+            # The readiness probe (ADR-0017): what the catalog says this app
+            # still needs before starting it would do anything but crash-loop.
+            setup_gaps_fn=self.assets.unmet_for_app,
         )
         self.api = ApiServer(
             create_app(
@@ -174,10 +185,23 @@ class Server:
                 assets=self.assets,
                 api_token=settings.api_token,
                 dashboard_dir=settings.dashboard_dir,
+                restart_fn=self.request_restart,
             ),
             host=settings.api_host,
             port=settings.api_port,
         )
+
+    def request_restart(self) -> None:
+        """Ask the process to stop and come back.
+
+        Only records the intent and releases run()'s wait: the re-exec happens
+        in main(), once the event loop has fully unwound. Doing it here would
+        replace the process image with children still running and the event
+        store still open.
+        """
+        _log.info("server.restart_requested")
+        self.restart_wanted = True
+        self.shutdown.set()
 
     async def _models_dir(self) -> str:
         """The chosen models root, or the default under the data dir."""
@@ -252,24 +276,66 @@ class Server:
         _log.info("server.stopped")
 
 
-async def run(settings: Settings | None = None) -> None:
+async def run(settings: Settings | None = None) -> bool:
+    """Boot, idle until stopped, tear down. True = the caller should re-exec."""
     settings = settings or Settings()
     configure_logging(settings.log_level)
     server = Server(settings)
     await server.start()
 
-    stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         with contextlib.suppress(NotImplementedError):  # non-POSIX platforms
-            loop.add_signal_handler(sig, stop.set)
+            loop.add_signal_handler(sig, server.shutdown.set)
     try:
-        await stop.wait()
+        await server.shutdown.wait()
     finally:
         await server.stop()
+    return server.restart_wanted
+
+
+def reexec_argv() -> list[str]:
+    """The argv that starts this server again, however it was started.
+
+    Three launch shapes have to survive a restart: ``python -m prodeo.server``,
+    the ``prodeo-server`` console script (a ``.exe`` on Windows, a shebang
+    script on POSIX - both directly executable), and a plain script path.
+    ``sys.argv[0]`` alone is not enough: under ``-m`` it is the resolved module
+    file, which is not runnable on its own.
+
+    The ``-m`` test is ``__main__.__spec__``, but only when it names a real
+    module. A console script launched through ``runpy`` - which is what
+    ``uv run prodeo-server`` does - also has a ``__spec__``, named plain
+    ``"__main__"`` with an empty ``parent``. Treating that as ``-m`` yields
+    ``python -m ""``, which is how this was first shipped and how it failed.
+    """
+    spec = getattr(sys.modules.get("__main__"), "__spec__", None)
+    name: str = getattr(spec, "name", "") or ""
+    if name and name != "__main__":
+        # "prodeo.__main__" for a package, "prodeo.server" for a module.
+        module = getattr(spec, "parent", "") if name.endswith(".__main__") else name
+        if module:
+            return [sys.executable, "-m", module, *sys.argv[1:]]
+    argv0 = sys.argv[0]
+    if argv0.endswith(".py"):
+        return [sys.executable, argv0, *sys.argv[1:]]
+    return [shutil.which(argv0) or argv0, *sys.argv[1:]]
 
 
 def main() -> None:
     """Console entry point: ``prodeo-server``."""
     with contextlib.suppress(KeyboardInterrupt):
-        asyncio.run(run())
+        if asyncio.run(run()):
+            # After asyncio.run: the loop is unwound, children reaped by
+            # Server.stop(), and the event store closed, so the replacement
+            # process finds the port free and the database consistent.
+            argv = reexec_argv()
+            _log.info("server.restarting", command=argv)
+            try:
+                os.execv(argv[0], argv)
+            except OSError:
+                # The old process is already gone at this point, so a failure
+                # here means no server at all. Say exactly what was attempted:
+                # the user's next move is to run it by hand.
+                _log.exception("server.restart_failed", command=argv)
+                raise SystemExit(1) from None

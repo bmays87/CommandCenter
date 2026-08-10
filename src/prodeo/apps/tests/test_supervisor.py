@@ -11,7 +11,7 @@ import pytest
 
 from prodeo.apps import AppManifest, AppSupervisor
 from prodeo.apps import supervisor as supervisor_module
-from prodeo.errors import UnknownAppError
+from prodeo.errors import AppNotReadyError, UnknownAppError
 from prodeo.events import Event
 
 
@@ -92,6 +92,14 @@ def _manifest(**overrides: Any) -> AppManifest:
     return AppManifest(**kwargs)
 
 
+class FakeGap:
+    """Structurally a ``SetupGap``; no import from prodeo.extensions needed."""
+
+    def __init__(self, description: str, config_pointer: str = "engines.piper.voice_path") -> None:
+        self.description = description
+        self.config_pointer = config_pointer
+
+
 def _supervisor(
     spawner: FakeSpawner,
     *,
@@ -100,6 +108,7 @@ def _supervisor(
     autostart: list[str] | None = None,
     presence: FakePresence | None = None,
     events: list[Event] | None = None,
+    setup_gaps: list[FakeGap] | Exception | None = None,
 ) -> AppSupervisor:
     sink = events if events is not None else []
 
@@ -112,6 +121,11 @@ def _supervisor(
     async def autostart_fn() -> list[str]:
         return list(autostart or [])
 
+    async def setup_gaps_fn(_name: str) -> list[FakeGap]:
+        if isinstance(setup_gaps, Exception):
+            raise setup_gaps
+        return list(setup_gaps or [])
+
     return AppSupervisor(
         publish=publish,
         presence=presence,
@@ -121,6 +135,7 @@ def _supervisor(
         api_token="tok",
         manifests_fn=lambda: [manifest or _manifest()],
         spawn_fn=spawner,
+        setup_gaps_fn=None if setup_gaps is None else setup_gaps_fn,
     )
 
 
@@ -351,4 +366,83 @@ async def test_presence_reports_liveness_separately_from_the_process() -> None:
 
     status = sup.status_of("demo")
     assert status.state == "running" and status.present is False
+    await sup.stop()
+
+
+# --- setup readiness (ADR-0017) ----------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_start_is_refused_while_setup_is_incomplete() -> None:
+    spawner = FakeSpawner()
+    sup = await _started(spawner=spawner, setup_gaps=[FakeGap("Download the voice")])
+
+    with pytest.raises(AppNotReadyError, match="Download the voice"):
+        await sup.start_app("demo")
+
+    assert spawner.launches == []  # never spawned, so never crash-looped
+    await sup.stop()
+
+
+@pytest.mark.asyncio
+async def test_start_proceeds_once_setup_is_complete() -> None:
+    spawner = FakeSpawner()
+    sup = await _started(spawner=spawner, setup_gaps=[])
+    await sup.start_app("demo")
+    await asyncio.wait_for(spawner.launched.wait(), timeout=2)
+    assert sup.status_of("demo").state == "running"
+    await sup.stop()
+
+
+@pytest.mark.asyncio
+async def test_env_provided_config_counts_as_setup() -> None:
+    # An app configured through the server's environment is startable without
+    # saved config; the gap must not block it. DEMO_ENGINES carries the value
+    # the gap's pointer names, exactly as pydantic-settings would read it.
+    spawner = FakeSpawner()
+    sup = await _started(spawner=spawner, setup_gaps=[FakeGap("Download the voice")])
+    env_value = '{"piper": {"voice_path": "/somewhere/v.onnx"}}'
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("DEMO_ENGINES", env_value)
+        assert await sup.unmet_setup("demo") == []
+        await sup.start_app("demo")
+        await asyncio.wait_for(spawner.launched.wait(), timeout=2)
+    await sup.stop()
+
+
+@pytest.mark.asyncio
+async def test_env_var_without_the_pointer_does_not_count() -> None:
+    # DEMO_ENGINES set, but for a different engine: the gap stands.
+    sup = await _started(spawner=FakeSpawner(), setup_gaps=[FakeGap("Download the voice")])
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("DEMO_ENGINES", '{"faster-whisper": {"model": "small"}}')
+        assert await sup.unmet_setup("demo") == ["Download the voice"]
+    await sup.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_broken_readiness_probe_fails_open() -> None:
+    # A broken catalog must degrade to the old behaviour (start allowed, the
+    # crash-loop guard as backstop), never make every app unstartable.
+    spawner = FakeSpawner()
+    sup = await _started(spawner=spawner, setup_gaps=RuntimeError("catalog unreadable"))
+    assert await sup.unmet_setup("demo") == []
+    await sup.start_app("demo")
+    await asyncio.wait_for(spawner.launched.wait(), timeout=2)
+    await sup.stop()
+
+
+@pytest.mark.asyncio
+async def test_autostart_with_incomplete_setup_reports_instead_of_looping() -> None:
+    spawner = FakeSpawner()
+    sup = await _started(
+        spawner=spawner,
+        autostart=["demo"],
+        setup_gaps=[FakeGap("Download the voice")],
+    )
+
+    status = sup.status_of("demo")
+    assert status.state == "failed"
+    assert "Download the voice" in status.last_error
+    assert spawner.launches == []
     await sup.stop()

@@ -53,6 +53,12 @@ is a contract with a host, and a process that talks to the server over HTTP has
 no host to be loaded by. Forcing Mjölnir through `factory(config)` would break
 the property that makes it correct.
 
+> **Amended by ADR-0016.** Being a second class means an app is absent from
+> `GET /api/extensions` entirely, which the dashboard's installed-vs-available
+> join originally missed: an app-class catalog entry never left "Available" and
+> re-offered Install after a successful install. Any code deciding "is this
+> installed?" must consider **both** classes.
+
 `env_prefix` is what keeps core generic. An app that reads settings through
 pydantic-settings declares its prefix, and the supervisor renders the whole
 child environment from `(prefix, saved config)` — strings verbatim, everything
@@ -139,7 +145,8 @@ a shell that predates the install still finds it.
   always wins.
 - **Restart-to-activate remains true** for plugin install/enable/disable: the
   Plugin Host loads once at boot. Only apps start and stop live, and the API
-  says `restart_required` rather than pretending otherwise.
+  says `restart_required` rather than pretending otherwise. (ADR-0016 keeps this
+  true but makes the restart itself a button rather than an instruction.)
 - A supervised child inherits the server's session. Voice therefore needs the
   server run from a desktop session; as a Windows service it has no microphone.
   A real limit of server-launched voice, not a bug.

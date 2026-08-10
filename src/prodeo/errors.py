@@ -59,6 +59,20 @@ class UnknownAppError(ProdeoError):
     """An operation referenced an app extension that is not installed."""
 
 
+class AppNotReadyError(ProdeoError):
+    """An app was asked to start before its setup steps were completed.
+
+    Starting anyway would only crash-loop (ADR-0017); the message lists the
+    steps, so the caller can show the user what to finish rather than a bare
+    exit code.
+    """
+
+    def __init__(self, name: str, gaps: list[str]) -> None:
+        super().__init__(f"{name!r} is not ready to start: " + "; ".join(gaps))
+        self.name = name
+        self.gaps = gaps
+
+
 class InteractionAlreadyResolvedError(ProdeoError):
     """An interaction was answered after it had already been resolved.
 

@@ -33,6 +33,10 @@ function AppCard({ app, onSetup }: { app: AppStatus; onSetup: () => void }) {
 
   const busy = start.isPending || stop.isPending || restart.isPending;
   const live = app.state === "running" || app.state === "starting";
+  // Server-computed (ADR-0017): setup steps still missing. The server refuses
+  // a start while any remain, so offering the button would only offer a 412.
+  const gaps = app.unmet_setup ?? [];
+  const notReady = gaps.length > 0;
 
   return (
     <div className="card ext-card">
@@ -48,6 +52,17 @@ function AppCard({ app, onSetup }: { app: AppStatus; onSetup: () => void }) {
         {app.restarts > 0 ? <span className="model">{app.restarts} restarts</span> : null}
       </div>
       {app.last_error && !live ? <div className="notice error">{app.last_error}</div> : null}
+      {notReady && !live ? (
+        <div className="notice app-gaps">
+          Complete setup before starting:
+          <ul>
+            {gaps.map((gap) => (
+              <li key={gap}>{gap}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {start.error ? <div className="notice error">{String(start.error.message)}</div> : null}
 
       <div className="ext-actions">
         {live ? (
@@ -55,7 +70,12 @@ function AppCard({ app, onSetup }: { app: AppStatus; onSetup: () => void }) {
             Stop
           </button>
         ) : (
-          <button type="button" onClick={() => start.mutate()} disabled={busy}>
+          <button
+            type="button"
+            onClick={() => start.mutate()}
+            disabled={busy || notReady}
+            title={notReady ? gaps.join("; ") : undefined}
+          >
             Start
           </button>
         )}

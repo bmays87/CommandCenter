@@ -18,7 +18,9 @@ must be a reported state, not a boot failure.
 """
 
 import asyncio
+import builtins
 import contextlib
+import json
 import os
 import shutil
 import sys
@@ -31,7 +33,7 @@ import structlog
 from pydantic import BaseModel
 
 from prodeo.apps.manifest import AppManifest, config_to_env, installed_apps
-from prodeo.errors import UnknownAppError
+from prodeo.errors import AppNotReadyError, UnknownAppError
 from prodeo.events import Event, new_event
 from prodeo.events import types as ev
 
@@ -62,6 +64,25 @@ AutostartFn = Callable[[], Awaitable[list[str]]]
 SpawnFn = Callable[[AppManifest, dict[str, str]], Awaitable[asyncio.subprocess.Process]]
 
 
+class SetupGap(Protocol):
+    """One unmet setup step, as the readiness probe reports it.
+
+    Structurally matches :class:`prodeo.extensions.AppSetupGap` without
+    importing it - services never import each other, and this seam is how the
+    supervisor stays ignorant of what a catalog or an asset is.
+    """
+
+    @property
+    def description(self) -> str: ...
+
+    @property
+    def config_pointer(self) -> str: ...
+
+
+#: The readiness probe: given an app name, the setup steps it still needs.
+SetupGapsFn = Callable[[str], Awaitable[Sequence[SetupGap]]]
+
+
 class PresenceView(Protocol):
     """The slice of the presence tracker the supervisor needs."""
 
@@ -90,6 +111,10 @@ class AppStatus(BaseModel):
     #: from "the client is actually working".
     present: bool = False
     configurable: bool = False
+    #: Setup steps still needed before this app can start, in human words.
+    #: Filled by the API layer at query time (the check is async and the
+    #: supervisor's queries are not); non-empty means Start will be refused.
+    unmet_setup: list[str] = []
 
 
 class _Running:
@@ -121,6 +146,7 @@ class AppSupervisor:
         api_token: str | None = None,
         manifests_fn: Callable[[], list[AppManifest]] = installed_apps,
         spawn_fn: SpawnFn | None = None,
+        setup_gaps_fn: SetupGapsFn | None = None,
     ) -> None:
         self._node = node
         self._publish = publish
@@ -132,6 +158,7 @@ class AppSupervisor:
         self._server_url_fn = server_url_fn
         self._api_token = api_token
         self._manifests_fn = manifests_fn
+        self._setup_gaps_fn = setup_gaps_fn
         self._spawn_fn: SpawnFn = spawn_fn or self._spawn
         self._apps: dict[str, AppManifest] = {}
         self._state: dict[str, _Running] = {}
@@ -149,10 +176,19 @@ class AppSupervisor:
             self._autostart = set(await self._autostart_fn()) if self._autostart_fn else set()
             _log.info("apps.started", installed=len(self._apps), autostart=len(self._autostart))
             for name in sorted(self._autostart):
-                if name in self._apps:
-                    await self.start_app(name)
-                else:
+                if name not in self._apps:
                     _log.warning("apps.autostart_not_installed", app=name)
+                    continue
+                try:
+                    await self.start_app(name)
+                except AppNotReadyError as exc:
+                    # Setup was undone since autostart was chosen (a wiped
+                    # models drive, a hand-edited config). Report instead of
+                    # crash-looping into the durable log at every backoff.
+                    state = self._state.setdefault(name, _Running())
+                    state.state = "failed"
+                    state.last_error = str(exc)
+                    _log.warning("apps.autostart_not_ready", app=name, gaps=exc.gaps)
         except Exception:
             # A supervisor that cannot start must not take the server with it.
             _log.exception("apps.start_failed")
@@ -178,6 +214,12 @@ class AppSupervisor:
         state = self._state.setdefault(name, _Running())
         if state.task is not None and not state.task.done():
             return self.status_of(name)
+        gaps = await self.unmet_setup(name)
+        if gaps:
+            # Starting anyway is how "exited with code 1" reaches a user with
+            # no idea what it means: the child would crash-loop on missing
+            # config until the crash-loop guard gives up (ADR-0017).
+            raise AppNotReadyError(name, gaps)
         state.wanted = True
         state.last_error = ""
         state.state = "starting"
@@ -225,6 +267,31 @@ class AppSupervisor:
 
     def manifest_of(self, name: str) -> AppManifest:
         return self._manifest(name)
+
+    # builtins.list: the ``list`` method above shadows the builtin here.
+    async def unmet_setup(self, name: str) -> builtins.list[str]:
+        """Setup steps this app still needs; non-empty means start is refused.
+
+        The probe reads *saved* config, but an app configured through the
+        server's environment is just as startable: the child inherits
+        ``os.environ`` (see :meth:`_child_env`), so a gap whose value the
+        environment provides is not a gap. Errors in the probe itself fail
+        open - a broken catalog must degrade to the old behaviour (start
+        allowed, crash-loop guard as backstop), never make apps unstartable.
+        """
+        manifest = self._manifest(name)
+        if self._setup_gaps_fn is None:
+            return []
+        try:
+            gaps = await self._setup_gaps_fn(name)
+        except Exception:
+            _log.exception("apps.setup_probe_failed", app=name)
+            return []
+        return [
+            gap.description
+            for gap in gaps
+            if not _env_provides(manifest.env_prefix, gap.config_pointer)
+        ]
 
     def set_autostart(self, name: str, enabled: bool) -> None:
         """Record the stored intention so ``status_of`` reports it truthfully."""
@@ -392,3 +459,32 @@ def _resolve_executable(name: str) -> str:
         if candidate.is_file():
             return str(candidate)
     raise FileNotFoundError(f"{name!r} is not installed or not on PATH")
+
+
+def _env_provides(env_prefix: str, pointer: str) -> bool:
+    """Whether the server's environment already supplies this config value.
+
+    ``engines.piper.voice_path`` under prefix ``MJOLNIR_`` is provided when
+    ``MJOLNIR_ENGINES`` exists and its JSON contains ``piper.voice_path`` -
+    the same rendering :func:`config_to_env` uses, read in reverse. An env var
+    whose JSON does not parse gets the benefit of the doubt: whoever hand-set
+    it on the server process is past the wizard's audience, and a wrong guess
+    here must not make their app unstartable.
+    """
+    if not env_prefix or not pointer:
+        return False
+    field, _, rest = pointer.partition(".")
+    raw = os.environ.get(f"{env_prefix}{field}".upper())
+    if raw is None:
+        return False
+    if not rest:
+        return True
+    try:
+        node: Any = json.loads(raw)
+    except ValueError:
+        return True
+    for part in rest.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return False
+        node = node[part]
+    return True

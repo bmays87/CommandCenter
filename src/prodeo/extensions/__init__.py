@@ -7,7 +7,7 @@ answers "what did it find, how is each one configured, is it turned on, and
 what else could the user install".
 """
 
-from prodeo.extensions.assets import AssetProvisioner, AssetResult, AssetStatus
+from prodeo.extensions.assets import AppSetupGap, AssetProvisioner, AssetResult, AssetStatus
 from prodeo.extensions.catalog import (
     BundledCatalog,
     Catalog,
@@ -44,6 +44,7 @@ from prodeo.extensions.store import (
 )
 
 __all__ = [
+    "AppSetupGap",
     "AssetProvisioner",
     "AssetResult",
     "AssetStatus",

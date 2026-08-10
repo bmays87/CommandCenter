@@ -42,7 +42,8 @@ NEUTRAL: dict[str, str] = {
     "unknown": "Sorry{honorific}, I didn't understand: {text}.",
     "help": (
         "You can ask for status, the overnight report, or what needs you; "
-        "approve or deny a permission; or stop a session."
+        "approve or deny a permission; stop a session; or just ask me a "
+        "question about your agents."
     ),
     "error": "Something went wrong{honorific}: {error}.",
     "notify_interaction": "{adapter} on {name} asks{honorific}: {title}.",

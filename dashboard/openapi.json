@@ -181,6 +181,14 @@
             "title": "State",
             "type": "string"
           },
+          "unmet_setup": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Unmet Setup",
+            "type": "array"
+          },
           "version": {
             "default": "",
             "title": "Version",
@@ -499,6 +507,54 @@
           "adapter"
         ],
         "title": "CreateScheduleRequest",
+        "type": "object"
+      },
+      "DirectoryEntry": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path"
+        ],
+        "title": "DirectoryEntry",
+        "type": "object"
+      },
+      "DirectoryListing": {
+        "description": "One directory's sub-directories, for the path picker.",
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/DirectoryEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          },
+          "path": {
+            "default": "",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "title": "DirectoryListing",
         "type": "object"
       },
       "EnvironmentCheck": {
@@ -1135,6 +1191,11 @@
       },
       "HealthResponse": {
         "properties": {
+          "boot_id": {
+            "default": "01KZNR1KM5Z66HG0FZ6DE4DWV0",
+            "title": "Boot Id",
+            "type": "string"
+          },
           "node": {
             "title": "Node",
             "type": "string"
@@ -1464,6 +1525,25 @@
         "title": "PromptRequest",
         "type": "object"
       },
+      "RestartResponse": {
+        "description": "Acknowledges a restart request; the process is still up when it is sent.",
+        "properties": {
+          "boot_id": {
+            "title": "Boot Id",
+            "type": "string"
+          },
+          "restarting": {
+            "title": "Restarting",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "restarting",
+          "boot_id"
+        ],
+        "title": "RestartResponse",
+        "type": "object"
+      },
       "Schedule": {
         "description": "One cron-style agent launch definition.\n\nSchedules are event-sourced: ``schedule.created`` carries the full model,\n``schedule.deleted`` removes it. ``last_triggered_at`` folds from\n``schedule.triggered``; ``next_run_at`` is recomputed at runtime and is\ninformational for API readers.",
         "properties": {
@@ -1750,7 +1830,7 @@
   "paths": {
     "/api/apps": {
       "get": {
-        "description": "Installed app extensions and whether each is running.",
+        "description": "Installed app extensions, whether each is running and is startable.",
         "operationId": "list_apps_api_apps_get",
         "responses": {
           "200": {
@@ -1858,6 +1938,7 @@
     },
     "/api/apps/{name}/start": {
       "post": {
+        "description": "Start an app. 412 with the missing steps when setup is incomplete.",
         "operationId": "start_app_api_apps__name__start_post",
         "parameters": [
           {
@@ -3144,6 +3225,47 @@
         "summary": "Terminate Session"
       }
     },
+    "/api/system/browse": {
+      "get": {
+        "description": "List sub-directories of ``path``, or the roots when it is empty.\n\nThe picker has to run here rather than in the browser: the value being\nchosen is a path on *this* machine, and neither ``webkitdirectory`` nor\n``showDirectoryPicker`` yields one. Listing server-side also makes the\nsame UI work on Windows and POSIX for free.\n\nRefused when the API has no token: enumerating the filesystem is a\nlarger disclosure than the rest of this read-mostly API, and the API is\nopen by default when no token is set (ADR-0016).",
+        "operationId": "browse_directories_api_system_browse_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryListing"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Browse Directories"
+      }
+    },
     "/api/system/environment": {
       "get": {
         "description": "What this machine is missing, and what would fix it.\n\nRead-only and cheap: hardware detection and a couple of local probes,\nso it is safe to poll from a settings page.",
@@ -3161,6 +3283,25 @@
           }
         },
         "summary": "System Environment"
+      }
+    },
+    "/api/system/restart": {
+      "post": {
+        "description": "Stop the server and start it again.\n\nInstalling, enabling, or disabling an extension only takes effect at the\nnext boot - the Plugin Host and the app supervisor both discover entry\npoints once, at start. Without this the manager can install something\nand then only ask the user to go and restart it by hand, which is not a\ndashboard doing its job (ADR-0016).\n\nRefused when the API has no token: restarting a process is at least as\nconsequential as the config writes that already require one.\n\nThe shutdown runs as a background task so this response is flushed\nfirst; otherwise the client sees a dropped connection and cannot tell\nsuccess from failure.",
+        "operationId": "restart_server_api_system_restart_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestartResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Restart Server"
       }
     },
     "/api/voice/events": {

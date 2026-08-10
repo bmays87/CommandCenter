@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { api } from "../api/client";
 import type { AppStatus, AssetStatus } from "../api/types";
+import { DirectoryPicker } from "./DirectoryPicker";
 
 /**
  * Guided voice setup: choose where models live, fetch the ones that do not
@@ -39,6 +40,7 @@ function Step({
 export function SetupWizard({ app }: { app: AppStatus }) {
   const queryClient = useQueryClient();
   const [dir, setDir] = useState<string | null>(null);
+  const [browsing, setBrowsing] = useState(false);
   const [error, setError] = useState("");
 
   const settings = useQuery({ queryKey: ["extension-settings"], queryFn: api.extensionSettings });
@@ -91,17 +93,32 @@ export function SetupWizard({ app }: { app: AppStatus }) {
       <ol className="wizard">
         <Step n={1} title="Choose where models are stored" done={Boolean(modelsDir)}>
           <div className="form-row">
-            <input
-              type="text"
-              value={dir ?? modelsDir}
-              placeholder="e.g. F:\prodeo\models"
-              onChange={(e) => setDir(e.target.value)}
-            />
+            <div className="input-with-button">
+              <input
+                type="text"
+                value={dir ?? modelsDir}
+                placeholder="e.g. F:\prodeo\models"
+                onChange={(e) => setDir(e.target.value)}
+              />
+              <button type="button" onClick={() => setBrowsing(true)}>
+                Browse…
+              </button>
+            </div>
             <p className="field-help">
               Speech and voice models run to hundreds of megabytes. Pick a drive with room —
               this is also used for the speech-to-text caches.
             </p>
           </div>
+          {browsing ? (
+            <DirectoryPicker
+              initialPath={dir ?? modelsDir}
+              onCancel={() => setBrowsing(false)}
+              onSelect={(path) => {
+                setDir(path);
+                setBrowsing(false);
+              }}
+            />
+          ) : null}
           <button
             type="button"
             onClick={() => saveDir.mutate(dir ?? modelsDir)}
@@ -157,6 +174,7 @@ export function SetupWizard({ app }: { app: AppStatus }) {
               {start.isPending ? "Starting…" : "Start"}
             </button>
           )}
+          {start.error ? <div className="notice error">{String(start.error.message)}</div> : null}
           {app.last_error && !running ? (
             <div className="notice error">{app.last_error}</div>
           ) : null}

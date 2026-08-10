@@ -4,7 +4,9 @@ import { useState } from "react";
 import { api } from "../api/client";
 import type { CatalogEntry, ExtensionSummary } from "../api/types";
 import { AppsPanel } from "./AppsPanel";
+import { DirectoryPicker } from "./DirectoryPicker";
 import { EnvironmentPanel } from "./EnvironmentPanel";
+import { RestartButton } from "./RestartButton";
 import { SchemaForm } from "./SchemaForm";
 
 function StatusBadge({ status }: { status: string }) {
@@ -19,10 +21,6 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`badge ext-${status}`}>{text}</span>;
 }
 
-/** Installs/removals apply at the next boot; be honest rather than fake it. */
-function RestartNotice() {
-  return <div className="notice">Restart the server for this to take effect.</div>;
-}
 
 function ExtensionCard({
   extension,
@@ -115,6 +113,15 @@ function AvailableCard({ entry, onInstalled }: { entry: CatalogEntry; onInstalle
           First install from a source checkout builds the workspace wheels — this takes a minute.
         </p>
       ) : null}
+      {/* Both plugins and apps are discovered once, at boot, so a successful
+          install changes nothing visible until the server comes back. Saying so
+          here is what stops a working install from reading as a failed one. */}
+      {install.isSuccess && install.data?.ok ? (
+        <>
+          <div className="notice">Installed. It appears after the server restarts.</div>
+          <RestartButton />
+        </>
+      ) : null}
       {error ? <div className="notice error">{error}</div> : null}
     </div>
   );
@@ -124,7 +131,9 @@ function ManagerSettings() {
   const queryClient = useQueryClient();
   const [models, setModels] = useState<string | null>(null);
   const [licence, setLicence] = useState<string | null>(null);
+  const [browsing, setBrowsing] = useState(false);
   const settings = useQuery({ queryKey: ["extension-settings"], queryFn: api.extensionSettings });
+  const modelsDir = models ?? settings.data?.models_dir ?? "";
 
   const save = useMutation({
     mutationFn: () =>
@@ -145,19 +154,34 @@ function ManagerSettings() {
       <h2>Settings</h2>
       <div className="form-row">
         <label htmlFor="models-dir">Models directory</label>
-        <input
-          id="models-dir"
-          type="text"
-          value={models ?? settings.data?.models_dir ?? ""}
-          placeholder="e.g. F:\prodeo\models"
-          onChange={(e) => setModels(e.target.value)}
-        />
+        <div className="input-with-button">
+          <input
+            id="models-dir"
+            type="text"
+            value={modelsDir}
+            placeholder="e.g. F:\prodeo\models"
+            onChange={(e) => setModels(e.target.value)}
+          />
+          <button type="button" onClick={() => setBrowsing(true)}>
+            Browse…
+          </button>
+        </div>
         <p className="field-help">
           Where downloaded models, voices, and weights are written. These run to gigabytes — put
           them somewhere with room, not necessarily the system drive. Empty uses each
           engine&rsquo;s own default.
         </p>
       </div>
+      {browsing ? (
+        <DirectoryPicker
+          initialPath={modelsDir}
+          onCancel={() => setBrowsing(false)}
+          onSelect={(path) => {
+            setModels(path);
+            setBrowsing(false);
+          }}
+        />
+      ) : null}
       <div className="form-row">
         <label htmlFor="licence-key">Licence key</label>
         <input
@@ -244,7 +268,7 @@ function ConfigPanel({ name, status }: { name: string; status: string }) {
           {uninstall.isPending ? "Removing…" : "Uninstall"}
         </button>
       </div>
-      {toggle.isSuccess || uninstall.isSuccess ? <RestartNotice /> : null}
+      {toggle.isSuccess || uninstall.isSuccess ? <RestartButton /> : null}
       {uninstall.data && !uninstall.data.ok ? (
         <div className="notice error">{uninstall.data.error}</div>
       ) : null}
@@ -258,7 +282,7 @@ function ConfigPanel({ name, status }: { name: string; status: string }) {
           client&rsquo;s own settings.
         </div>
       ) : null}
-      {saved ? <RestartNotice /> : null}
+      {saved ? <RestartButton /> : null}
       {schema ? (
         <SchemaForm
           schema={schema}
@@ -281,12 +305,20 @@ export function ExtensionsView() {
 
   const installed = useQuery({ queryKey: ["extensions"], queryFn: api.extensions });
   const catalog = useQuery({ queryKey: ["extension-catalog"], queryFn: api.extensionCatalog });
+  // Apps are a second extension class, not a plugin kind (ADR-0015), so they
+  // are absent from /api/extensions entirely. Without them an app-class catalog
+  // entry can never leave "Available" and re-offers Install after a successful
+  // install. Same query key as AppsPanel, so this shares one cache entry.
+  const apps = useQuery({ queryKey: ["apps"], queryFn: api.apps });
 
   if (installed.isLoading) return <div className="notice">Loading extensions…</div>;
   if (installed.error) return <div className="notice error">{String(installed.error)}</div>;
 
   const extensions = installed.data?.extensions ?? [];
-  const installedNames = new Set(extensions.map((e) => e.name));
+  const installedNames = new Set([
+    ...extensions.map((e) => e.name),
+    ...(apps.data?.apps ?? []).map((a) => a.name),
+  ]);
   const available = (catalog.data?.entries ?? []).filter((e) => !installedNames.has(e.name));
   const current = extensions.find((e) => e.name === selected);
 
@@ -321,6 +353,7 @@ export function ExtensionsView() {
                 entry={e}
                 onInstalled={() => {
                   void queryClient.invalidateQueries({ queryKey: ["extensions"] });
+                  void queryClient.invalidateQueries({ queryKey: ["apps"] });
                 }}
               />
             ))}

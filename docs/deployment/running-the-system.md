@@ -54,9 +54,16 @@ required — see [plugin-system.md](../architecture/plugin-system.md).
 
 Installing no longer has to be a shell step either: the Extensions page installs
 from a curated catalog into `<PRODEO_DATA_DIR>/extensions/lib`, which sits
-outside `.venv` so `uv sync` cannot delete it. Plugins still need a **server
-restart** to load — the host reads entry points once at boot — whereas apps
-start and stop live.
+outside `.venv` so `uv sync` cannot delete it. Newly installed plugins *and*
+apps need a **server restart** to be discovered — both read entry points once,
+at boot — but the restart is a button on that page rather than a trip to the
+terminal (ADR-0016), and once an app is known, starting and stopping it is live.
+
+The restart button and the folder picker beside the models directory both
+require `PRODEO_API_TOKEN` to be set; without it they answer 403, the same as
+every other state-changing endpoint. On Windows, a restart leaves the launching
+shell with a fresh prompt while the new server keeps logging to that same
+console — expected, and explained in ADR-0016.
 
 ## "More packages" ≠ "better Mjölnir"
 

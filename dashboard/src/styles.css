@@ -998,3 +998,149 @@ main {
   padding: 3px 7px;
   word-break: break-all;
 }
+
+/* ---- directory picker ---- */
+
+.input-with-button {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.input-with-button input[type="text"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(560px, 100%);
+  max-height: min(70vh, 640px);
+  padding: 18px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.picker h3 {
+  margin: 0;
+}
+
+.picker-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.picker-path {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.picker-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.picker-list {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.picker-list li + li {
+  border-top: 1px solid var(--border);
+}
+
+.picker-list button {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 8px 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.picker-list button:hover {
+  background: var(--panel-2);
+  color: var(--accent);
+}
+
+.picker-empty {
+  padding: 12px;
+  color: var(--muted);
+}
+
+.picker-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.picker-actions code {
+  font-family: var(--mono);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+/* ---- restart ---- */
+
+.restart-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 10px 0;
+}
+
+.restart-row .field-help {
+  margin: 0;
+}
+
+.restart-row .notice {
+  width: 100%;
+  padding: 8px 0;
+  text-align: left;
+}
+
+/* ---- app setup gaps ---- */
+
+.app-gaps {
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--amber);
+  font-size: 13px;
+}
+
+.app-gaps ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--text);
+}

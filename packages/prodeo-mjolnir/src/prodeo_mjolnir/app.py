@@ -13,7 +13,7 @@ knowing a single field name here.
 from prodeo.apps import AppManifest
 from prodeo_mjolnir.config import MjolnirSettings
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 #: The handful of settings that actually need a human decision. The other ~30
 #: are tuning knobs with working defaults and belong behind "Advanced" - a

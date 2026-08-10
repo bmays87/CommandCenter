@@ -85,6 +85,14 @@ class MjolnirSettings(BaseSettings):
         "stop",
     ]
 
+    # Question answering (ADR-0018)
+    #: ``llm`` (default) = utterances no intent matched become grounded
+    #: questions to the LLM brain, answered from a live state snapshot;
+    #: ``off`` = the deterministic "didn't understand" template, as before.
+    question_answering: Literal["llm", "off"] = "llm"
+    #: Bound on one answer; on timeout the "didn't understand" template speaks.
+    qa_timeout_s: float = 10.0
+
     # Persona (see docs/architecture/voice-pipeline.md#persona)
     #: Interpolated into every response template ("sir", "ma'am", a name, or
     #: empty for none).

@@ -199,3 +199,75 @@ async def test_unwired_supervisor_reports_unavailable(tmp_path: Path) -> None:
     api, _, _ = _app(tmp_path, wire=False)
     async with _client(api) as client:
         assert (await client.get("/api/apps")).status_code == 503
+
+
+# --- setup readiness (ADR-0017) ----------------------------------------------
+
+
+class _Gap:
+    description = "Download the voice (~63 MB) in the setup wizard"
+    config_pointer = "engines.piper.voice_path"
+
+
+def _gapped_app(tmp_path: Path) -> tuple[FastAPI, AppSupervisor]:
+    """An app whose supervisor reports one unmet setup step."""
+    bus = InProcessEventBus()
+    registry = SessionRegistry(bus)
+    mediation = MediationService(bus)
+    manager = AdapterManager(bus, registry, mediation, data_dir=tmp_path, discovery_interval=0)
+
+    async def config_fn(_name: str) -> dict[str, Any]:
+        return {}
+
+    async def gaps_fn(_name: str) -> list[_Gap]:
+        return [_Gap()]
+
+    supervisor = AppSupervisor(
+        config_fn=config_fn,
+        manifests_fn=lambda: [_manifest()],
+        spawn_fn=_spawn,
+        setup_gaps_fn=gaps_fn,
+    )
+    api = create_app(
+        registry=registry,
+        store=SqliteEventStore(tmp_path / "events.db"),
+        bus=bus,
+        mediation=mediation,
+        manager=manager,
+        scheduler=SchedulerService(bus, manager, node="test-node"),
+        presence=PresenceTracker(),
+        node="test-node",
+        version="0.0-test",
+        apps=supervisor,
+        api_token=TOKEN,
+    )
+    return api, supervisor
+
+
+@pytest.mark.asyncio
+async def test_listing_carries_the_unmet_setup_steps(tmp_path: Path) -> None:
+    api, supervisor = _gapped_app(tmp_path)
+    await supervisor.start()
+    try:
+        async with _client(api) as client:
+            (app,) = (await client.get("/api/apps")).json()["apps"]
+    finally:
+        await supervisor.stop()
+
+    assert app["unmet_setup"] == ["Download the voice (~63 MB) in the setup wizard"]
+
+
+@pytest.mark.asyncio
+async def test_starting_an_unready_app_is_412_with_the_steps(tmp_path: Path) -> None:
+    api, supervisor = _gapped_app(tmp_path)
+    await supervisor.start()
+    try:
+        async with _client(api) as client:
+            resp = await client.post("/api/apps/mjolnir/start")
+    finally:
+        await supervisor.stop()
+
+    assert resp.status_code == 412
+    detail = resp.json()["detail"]
+    assert "not ready to start" in detail
+    assert "Download the voice" in detail

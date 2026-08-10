@@ -8,6 +8,7 @@ simultaneous dashboard click wins the interaction, the voice user is told so
 
 import re
 from datetime import UTC, datetime, timedelta
+from typing import Protocol
 
 import structlog
 
@@ -74,6 +75,13 @@ def _spoken_list(names: list[str]) -> str:
     return ", ".join(names[:-1]) + " and " + names[-1]
 
 
+class Answerer(Protocol):
+    """Grounded question answering (``answers.AnswerEngine``); a Protocol so
+    the dependency stays injected, matching the ``Router`` seam."""
+
+    async def answer(self, text: str) -> str: ...
+
+
 class CommandHandlers:
     """One method per intent; every path ends in a template key."""
 
@@ -84,11 +92,13 @@ class CommandHandlers:
         composer: ResponseComposer,
         *,
         overnight_hours: float = 12.0,
+        answers: Answerer | None = None,
     ) -> None:
         self._cache = cache
         self._client = client
         self._composer = composer
         self._overnight_hours = overnight_hours
+        self._answers = answers
         #: The pending interactions as last read out, so "approve number two"
         #: resolves against exactly what the user heard (not a since-changed list).
         self._last_pending: list[Interaction] = []
@@ -122,8 +132,22 @@ class CommandHandlers:
             case CancelIntent():
                 return self._composer.compose("cancelled")
             case UnknownIntent(text=text):
-                return self._composer.compose("unknown", text=text or "nothing")
+                return await self._unmatched(text)
         return self._composer.compose("unknown", text="nothing")  # pragma: no cover
+
+    async def _unmatched(self, text: str) -> str:
+        """No intent matched: treat it as a question before giving up.
+
+        The engine grounds itself in the same cache the queries read and can
+        only produce speech (ADR-0018); an empty answer - engine off, LLM
+        down, timeout - falls back to the deterministic template, exactly the
+        pre-ADR-0018 behaviour.
+        """
+        if self._answers is not None and text.strip():
+            spoken = await self._answers.answer(text)
+            if spoken:
+                return spoken
+        return self._composer.compose("unknown", text=text or "nothing")
 
     # -------------------------------------------------------------- queries
 

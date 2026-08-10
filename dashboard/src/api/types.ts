@@ -20,6 +20,10 @@ export type AssetStatus = components["schemas"]["AssetStatus"];
 export type AssetResult = components["schemas"]["AssetResult"];
 export type EnvironmentCheck = components["schemas"]["EnvironmentCheck"];
 export type EnvironmentReport = components["schemas"]["EnvironmentReport"];
+export type HealthResponse = components["schemas"]["HealthResponse"];
+export type RestartResponse = components["schemas"]["RestartResponse"];
+export type DirectoryEntry = components["schemas"]["DirectoryEntry"];
+export type DirectoryListing = components["schemas"]["DirectoryListing"];
 
 export const ACTIVE_STATES: readonly string[] = [
   "running",

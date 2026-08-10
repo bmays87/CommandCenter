@@ -59,6 +59,24 @@ class AssetResult(BaseModel):
     configured: str = ""
 
 
+class AppSetupGap(BaseModel):
+    """One setup step an app still needs before it can start.
+
+    Derived entirely from catalog data: an asset with ``config_app`` set is a
+    prerequisite of that app, and the app is ready only when the config value
+    the asset writes exists and points at a real file. This is what lets the
+    supervisor refuse a start that would only crash-loop (ADR-0017), without
+    core knowing what any particular app needs.
+    """
+
+    #: Human words, shown on the disabled Start button and in the 412 detail.
+    description: str
+    #: The dotted config key whose absence this gap represents, e.g.
+    #: ``engines.piper.voice_path``. The supervisor uses it to recognise a
+    #: setup satisfied through the environment instead of saved config.
+    config_pointer: str
+
+
 class AssetProvisioner:
     """Resolves, checks, and downloads the assets declared by the catalog."""
 
@@ -81,6 +99,44 @@ class AssetProvisioner:
         """Every asset for one extension, with what is already on disk."""
         entry = await self._entry(name)
         return [self._status(asset, await self._substitutions()) for asset in entry.assets]
+
+    async def unmet_for_app(self, app: str) -> list[AppSetupGap]:
+        """Setup steps still standing between ``app`` and a working start.
+
+        Scans the whole catalog for assets that declare they configure this
+        app, then checks the app's *saved config* - not the downloaded files -
+        because the config value is what the app actually reads. Three cases:
+
+        - pointer unset: the wizard step was never run;
+        - pointer set but the file is gone: worse, because the app may start
+          cleanly and misbehave silently (the Piper mute case);
+        - pointer set and the file exists: satisfied.
+        """
+        gaps: list[AppSetupGap] = []
+        catalog = await self._catalog.fetch()
+        config = await self._store.get(app) or {}
+        for entry in catalog.entries:
+            for asset in entry.assets:
+                if asset.config_app != app or not asset.config_pointer:
+                    continue
+                label = asset.label or asset.id
+                value = _get_pointer(config, asset.config_pointer)
+                if not isinstance(value, str) or not value:
+                    size = f" (~{asset.approx_mb} MB)" if asset.approx_mb else ""
+                    gaps.append(
+                        AppSetupGap(
+                            description=f'Download "{label}"{size} in the setup wizard',
+                            config_pointer=asset.config_pointer,
+                        )
+                    )
+                elif not Path(value).exists():
+                    gaps.append(
+                        AppSetupGap(
+                            description=f'"{label}" is configured but missing from disk: {value}',
+                            config_pointer=asset.config_pointer,
+                        )
+                    )
+        return gaps
 
     async def download(self, name: str, asset_id: str) -> AssetResult:
         """Fetch one asset, then wire its path into the owning app's config."""
@@ -193,6 +249,16 @@ def _substitute(text: str, subs: dict[str, str]) -> str:
     for key, value in subs.items():
         text = text.replace("{" + key + "}", value)
     return text
+
+
+def _get_pointer(config: dict[str, Any], pointer: str) -> Any:
+    """Read a dotted path, or ``None`` where any segment is absent."""
+    node: Any = config
+    for part in pointer.split("."):
+        if not isinstance(node, dict):
+            return None
+        node = node.get(part)
+    return node
 
 
 def _set_pointer(config: dict[str, Any], pointer: str, value: Any) -> None:

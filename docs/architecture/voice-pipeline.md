@@ -92,6 +92,17 @@ Intents route through a `Router` seam with two implementations behind it:
    never names an id, and confirmations remain deterministic. See
    [ADR-0012](../adr/0012-llm-intent-router.md) and
    [ADR-0013](../adr/0013-ollama-default-brain.md).
+3. **Grounded question answering (default; `MJOLNIR_QUESTION_ANSWERING=llm`).**
+   When *neither* router produces an intent, the utterance is treated as a
+   question rather than dead-ending in "didn't understand". The same LLM
+   identity answers it from a frame of reference (who Mjölnir is, what agents,
+   sessions, and permission requests are, which spoken commands exist) plus a
+   live state snapshot rendered from the local cache — so "what's an agent?",
+   "why is it asking me that?", and "what are you for?" get real answers with
+   context already attached. The engine is a talker, never an actor: it can
+   produce nothing but speech, actions still flow only through the intent enum,
+   and any failure falls back to the deterministic "didn't understand" template.
+   See [ADR-0018](../adr/0018-grounded-question-answering.md).
 
 **Echo suppression.** The pipeline is half-duplex — it does not listen while
 speaking — but a real mic keeps buffering during playback, so TTS can bleed

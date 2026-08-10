@@ -9,11 +9,23 @@ it exists, so a single process serves both API and UI.
 
 import asyncio
 import contextlib
+import os
+import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
 
 import structlog
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
@@ -27,6 +39,7 @@ from prodeo.environment import EnvironmentReport
 from prodeo.environment import report as environment_report
 from prodeo.errors import (
     AdapterOperationError,
+    AppNotReadyError,
     CapabilityNotSupportedError,
     InteractionAlreadyResolvedError,
     InvalidScheduleError,
@@ -85,14 +98,24 @@ _ERROR_STATUS: dict[type[ProdeoError], int] = {
     NotEntitledError: 402,
     #: Precondition Failed - this machine cannot run it (no GPU, wrong Python).
     RequirementsNotMetError: 412,
+    #: Precondition Failed - setup steps incomplete; the detail lists them.
+    AppNotReadyError: 412,
     AdapterOperationError: 502,
 }
+
+
+#: Identifies this process. Changes on every boot, which is what lets a client
+#: tell "the server I asked to restart is back" from "it has not gone down yet"
+#: - the two are indistinguishable from a plain reachability check.
+BOOT_ID = str(ULID())
 
 
 class HealthResponse(BaseModel):
     status: str
     version: str
     node: str
+    #: New on every process start; see :data:`BOOT_ID`.
+    boot_id: str = BOOT_ID
 
 
 class SessionListResponse(BaseModel):
@@ -234,6 +257,85 @@ class AppAutostartRequest(BaseModel):
     autostart: bool
 
 
+class RestartResponse(BaseModel):
+    """Acknowledges a restart request; the process is still up when it is sent."""
+
+    restarting: bool
+    #: The boot_id being replaced. Poll ``/api/health`` until it differs.
+    boot_id: str
+
+
+class DirectoryEntry(BaseModel):
+    name: str
+    path: str
+
+
+class DirectoryListing(BaseModel):
+    """One directory's sub-directories, for the path picker."""
+
+    #: Empty at the root listing, which has no single path (Windows has drives).
+    path: str = ""
+    #: ``None`` at a root, so the UI knows not to offer "up".
+    parent: str | None = None
+    entries: list[DirectoryEntry] = Field(default_factory=list)
+
+
+def _root_entries() -> list[DirectoryEntry]:
+    """Where a browse with no path starts: drives on Windows, ``/`` elsewhere.
+
+    Home is offered on both, because it is where a user most often wants to
+    put things and is otherwise several clicks deep.
+    """
+    roots: list[DirectoryEntry] = []
+    listdrives = getattr(os, "listdrives", None)
+    if sys.platform == "win32" and listdrives is not None:
+        with contextlib.suppress(OSError):
+            for drive in listdrives():
+                # listdrives() reports drives that are not ready - an empty
+                # optical drive, a disconnected network mapping. Offering one
+                # is offering a dead end.
+                with contextlib.suppress(OSError):
+                    if Path(drive).is_dir():
+                        roots.append(DirectoryEntry(name=drive, path=drive))
+    else:
+        roots.append(DirectoryEntry(name="/", path="/"))
+    with contextlib.suppress(OSError, RuntimeError):
+        home = Path.home()
+        if home.is_dir():
+            roots.append(DirectoryEntry(name=f"Home ({home.name})", path=str(home)))
+    return roots
+
+
+def _list_directories(path: str) -> DirectoryListing:
+    """Sub-directories of ``path``. Blocking; callers use ``to_thread``."""
+    if not path:
+        return DirectoryListing(entries=_root_entries())
+    try:
+        target = Path(path).expanduser().resolve()
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"bad path: {exc}") from exc
+    if not target.is_dir():
+        raise HTTPException(status_code=404, detail=f"{path!r} is not a directory")
+    try:
+        children = sorted(target.iterdir(), key=lambda p: p.name.casefold())
+    except OSError as exc:
+        raise HTTPException(status_code=403, detail=f"cannot list {target}: {exc}") from exc
+    entries: list[DirectoryEntry] = []
+    for child in children:
+        # One unreadable child - C:\System Volume Information, a dead symlink -
+        # must not fail the listing the user is actually looking at.
+        with contextlib.suppress(OSError):
+            if child.is_dir():
+                entries.append(DirectoryEntry(name=child.name, path=str(child)))
+    parent = target.parent
+    return DirectoryListing(
+        path=str(target),
+        # At a filesystem root a path is its own parent; that is the signal.
+        parent=None if parent == target else str(parent),
+        entries=entries,
+    )
+
+
 def create_app(
     *,
     registry: SessionRegistry,
@@ -251,6 +353,9 @@ def create_app(
     assets: AssetProvisioner | None = None,
     api_token: str | None = None,
     dashboard_dir: Path | None = None,
+    #: Injected by the composition root; records the intent and releases the
+    #: idle wait in ``prodeo.server.run``. None = restart is not offered.
+    restart_fn: Callable[[], None] | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Prodeo Command Center", version=version)
     auth = Depends(make_auth_dependency(api_token))
@@ -262,7 +367,7 @@ def create_app(
 
     @app.get("/api/health", response_model=HealthResponse)
     async def health() -> HealthResponse:  # health is unauthenticated by design
-        return HealthResponse(status="ok", version=version, node=node)
+        return HealthResponse(status="ok", version=version, node=node, boot_id=BOOT_ID)
 
     @app.get("/api/sessions", response_model=SessionListResponse, dependencies=[auth])
     async def list_sessions() -> SessionListResponse:
@@ -624,25 +729,73 @@ def create_app(
             models_dir = (await extensions.settings()).models_dir
         return await environment_report(models_dir)
 
+    @app.post("/api/system/restart", response_model=RestartResponse, dependencies=[auth])
+    async def restart_server(background: BackgroundTasks) -> RestartResponse:
+        """Stop the server and start it again.
+
+        Installing, enabling, or disabling an extension only takes effect at the
+        next boot - the Plugin Host and the app supervisor both discover entry
+        points once, at start. Without this the manager can install something
+        and then only ask the user to go and restart it by hand, which is not a
+        dashboard doing its job (ADR-0016).
+
+        Refused when the API has no token: restarting a process is at least as
+        consequential as the config writes that already require one.
+
+        The shutdown runs as a background task so this response is flushed
+        first; otherwise the client sees a dropped connection and cannot tell
+        success from failure.
+        """
+        _require_write()
+        if restart_fn is None:  # not wired (schema export, focused tests)
+            raise HTTPException(status_code=503, detail="restart is not available on this server")
+        background.add_task(restart_fn)
+        return RestartResponse(restarting=True, boot_id=BOOT_ID)
+
+    @app.get("/api/system/browse", response_model=DirectoryListing, dependencies=[auth])
+    async def browse_directories(path: str = Query(default="")) -> DirectoryListing:
+        """List sub-directories of ``path``, or the roots when it is empty.
+
+        The picker has to run here rather than in the browser: the value being
+        chosen is a path on *this* machine, and neither ``webkitdirectory`` nor
+        ``showDirectoryPicker`` yields one. Listing server-side also makes the
+        same UI work on Windows and POSIX for free.
+
+        Refused when the API has no token: enumerating the filesystem is a
+        larger disclosure than the rest of this read-mostly API, and the API is
+        open by default when no token is set (ADR-0016).
+        """
+        _require_write()
+        return await asyncio.to_thread(_list_directories, path)
+
+    async def _with_setup(status: AppStatus) -> AppStatus:
+        """Annotate a status with its unmet setup steps (ADR-0017).
+
+        Computed at query time rather than stored: the answer changes when a
+        wizard step completes, and the dashboard polls this anyway.
+        """
+        return status.model_copy(update={"unmet_setup": await _apps().unmet_setup(status.name)})
+
     @app.get("/api/apps", response_model=AppListResponse, dependencies=[auth])
     async def list_apps() -> AppListResponse:
-        """Installed app extensions and whether each is running."""
-        return AppListResponse(apps=_apps().list())
+        """Installed app extensions, whether each is running and is startable."""
+        return AppListResponse(apps=[await _with_setup(s) for s in _apps().list()])
 
     @app.post("/api/apps/{name}/start", response_model=AppStatus, dependencies=[auth])
     async def start_app(name: str) -> AppStatus:
+        """Start an app. 412 with the missing steps when setup is incomplete."""
         _require_write()
-        return await _apps().start_app(name)
+        return await _with_setup(await _apps().start_app(name))
 
     @app.post("/api/apps/{name}/stop", response_model=AppStatus, dependencies=[auth])
     async def stop_app(name: str) -> AppStatus:
         _require_write()
-        return await _apps().stop_app(name)
+        return await _with_setup(await _apps().stop_app(name))
 
     @app.post("/api/apps/{name}/restart", response_model=AppStatus, dependencies=[auth])
     async def restart_app(name: str) -> AppStatus:
         _require_write()
-        return await _apps().restart_app(name)
+        return await _with_setup(await _apps().restart_app(name))
 
     @app.put("/api/apps/{name}/autostart", response_model=AppStatus, dependencies=[auth])
     async def set_app_autostart(name: str, body: AppAutostartRequest) -> AppStatus:
@@ -660,7 +813,7 @@ def create_app(
             chosen.add(name) if body.autostart else chosen.discard(name)
             settings.autostart = sorted(chosen)
             await extensions.set_settings(settings)
-        return supervisor.status_of(name)
+        return await _with_setup(supervisor.status_of(name))
 
     @app.websocket("/api/ws/events")
     async def event_stream(ws: WebSocket) -> None:

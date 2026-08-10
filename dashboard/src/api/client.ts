@@ -3,7 +3,10 @@ import type {
   AppStatus,
   AssetResult,
   AssetStatus,
+  DirectoryListing,
   EnvironmentReport,
+  HealthResponse,
+  RestartResponse,
   Catalog,
   ExtensionConfig,
   ExtensionDetail,
@@ -114,8 +117,10 @@ export interface AssetListResponse {
 }
 
 export const api = {
-  health: () =>
-    get<{ status: string; version: string; node: string }>("/api/health"),
+  health: () => get<HealthResponse>("/api/health"),
+  restartServer: () => post<RestartResponse>("/api/system/restart"),
+  browse: (path: string) =>
+    get<DirectoryListing>(`/api/system/browse?path=${encodeURIComponent(path)}`),
   sessions: () => get<SessionListResponse>("/api/sessions"),
   session: (id: string) => get<Session>(`/api/sessions/${id}`),
   sessionEvents: (id: string, limit = 500) =>

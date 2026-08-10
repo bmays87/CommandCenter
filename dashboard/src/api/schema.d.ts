@@ -13,7 +13,7 @@ export interface paths {
         };
         /**
          * List Apps
-         * @description Installed app extensions and whether each is running.
+         * @description Installed app extensions, whether each is running and is startable.
          */
         get: operations["list_apps_api_apps_get"];
         put?: never;
@@ -73,7 +73,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Start App */
+        /**
+         * Start App
+         * @description Start an app. 412 with the missing steps when setup is incomplete.
+         */
         post: operations["start_app_api_apps__name__start_post"];
         delete?: never;
         options?: never;
@@ -577,6 +580,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/system/browse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Browse Directories
+         * @description List sub-directories of ``path``, or the roots when it is empty.
+         *
+         *     The picker has to run here rather than in the browser: the value being
+         *     chosen is a path on *this* machine, and neither ``webkitdirectory`` nor
+         *     ``showDirectoryPicker`` yields one. Listing server-side also makes the
+         *     same UI work on Windows and POSIX for free.
+         *
+         *     Refused when the API has no token: enumerating the filesystem is a
+         *     larger disclosure than the rest of this read-mostly API, and the API is
+         *     open by default when no token is set (ADR-0016).
+         */
+        get: operations["browse_directories_api_system_browse_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/system/environment": {
         parameters: {
             query?: never;
@@ -594,6 +626,39 @@ export interface paths {
         get: operations["system_environment_api_system_environment_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restart Server
+         * @description Stop the server and start it again.
+         *
+         *     Installing, enabling, or disabling an extension only takes effect at the
+         *     next boot - the Plugin Host and the app supervisor both discover entry
+         *     points once, at start. Without this the manager can install something
+         *     and then only ask the user to go and restart it by hand, which is not a
+         *     dashboard doing its job (ADR-0016).
+         *
+         *     Refused when the API has no token: restarting a process is at least as
+         *     consequential as the config writes that already require one.
+         *
+         *     The shutdown runs as a background task so this response is flushed
+         *     first; otherwise the client sees a dropped connection and cannot tell
+         *     success from failure.
+         */
+        post: operations["restart_server_api_system_restart_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -723,6 +788,11 @@ export interface components {
              * @enum {string}
              */
             state: "stopped" | "starting" | "running" | "exited" | "failed";
+            /**
+             * Unmet Setup
+             * @default []
+             */
+            unmet_setup: string[];
             /**
              * Version
              * @default
@@ -930,6 +1000,28 @@ export interface components {
              * @default
              */
             prompt: string;
+        };
+        /** DirectoryEntry */
+        DirectoryEntry: {
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+        };
+        /**
+         * DirectoryListing
+         * @description One directory's sub-directories, for the path picker.
+         */
+        DirectoryListing: {
+            /** Entries */
+            entries?: components["schemas"]["DirectoryEntry"][];
+            /** Parent */
+            parent?: string | null;
+            /**
+             * Path
+             * @default
+             */
+            path: string;
         };
         /**
          * EnvironmentCheck
@@ -1314,6 +1406,11 @@ export interface components {
         };
         /** HealthResponse */
         HealthResponse: {
+            /**
+             * Boot Id
+             * @default 01KZNR1KM5Z66HG0FZ6DE4DWV0
+             */
+            boot_id: string;
             /** Node */
             node: string;
             /** Status */
@@ -1500,6 +1597,16 @@ export interface components {
         PromptRequest: {
             /** Prompt */
             prompt: string;
+        };
+        /**
+         * RestartResponse
+         * @description Acknowledges a restart request; the process is still up when it is sent.
+         */
+        RestartResponse: {
+            /** Boot Id */
+            boot_id: string;
+            /** Restarting */
+            restarting: boolean;
         };
         /**
          * Schedule
@@ -2674,6 +2781,37 @@ export interface operations {
             };
         };
     };
+    browse_directories_api_system_browse_get: {
+        parameters: {
+            query?: {
+                path?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectoryListing"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     system_environment_api_system_environment_get: {
         parameters: {
             query?: never;
@@ -2690,6 +2828,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnvironmentReport"];
+                };
+            };
+        };
+    };
+    restart_server_api_system_restart_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestartResponse"];
                 };
             };
         };

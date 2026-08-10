@@ -68,7 +68,7 @@
     "name": "mjolnir",
     "extension_class": "app",
     "kind": "",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "The offline voice client: wake word, speech-to-text, and a spoken assistant that answers questions and approves permissions by voice.",
     "publisher": "Prodeo",
     "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-mjolnir",

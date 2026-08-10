@@ -168,3 +168,57 @@ async def test_bundled_catalog_declares_the_piper_voice(tmp_path: Path) -> None:
     assert len(asset.produces) == 2
     assert asset.produces[1].endswith(".onnx.json")
     assert asset.config_pointer == "engines.piper.voice_path"
+
+
+# --- app readiness (ADR-0017) ------------------------------------------------
+
+
+def _readiness_provisioner(tmp_path: Path) -> tuple[AssetProvisioner, JsonFileConfigStore]:
+    store = JsonFileConfigStore(tmp_path / "extensions.json")
+    entry = CatalogEntry(name="piper", package="prodeo-tts-piper", assets=[_asset()])
+    prov = AssetProvisioner(
+        catalog=FakeCatalog([entry]),
+        store=store,
+        models_dir_fn=lambda: str(tmp_path / "models"),
+        python=sys.executable,
+    )
+    return prov, store
+
+
+@pytest.mark.asyncio
+async def test_app_with_no_saved_config_has_a_gap(tmp_path: Path) -> None:
+    prov, _ = _readiness_provisioner(tmp_path)
+
+    (gap,) = await prov.unmet_for_app("mjolnir")
+
+    assert "Test voice" in gap.description
+    assert gap.config_pointer == "engines.piper.voice_path"
+
+
+@pytest.mark.asyncio
+async def test_configured_and_present_asset_is_no_gap(tmp_path: Path) -> None:
+    prov, store = _readiness_provisioner(tmp_path)
+    voice = tmp_path / "v.onnx"
+    voice.write_text("x")
+    await store.put("mjolnir", {"engines": {"piper": {"voice_path": str(voice)}}})
+
+    assert await prov.unmet_for_app("mjolnir") == []
+
+
+@pytest.mark.asyncio
+async def test_configured_but_deleted_file_is_reported_as_missing(tmp_path: Path) -> None:
+    # The sharp edge: config present, file gone. The app might start cleanly
+    # and misbehave silently, which is worse than not starting.
+    prov, store = _readiness_provisioner(tmp_path)
+    await store.put("mjolnir", {"engines": {"piper": {"voice_path": str(tmp_path / "gone.onnx")}}})
+
+    (gap,) = await prov.unmet_for_app("mjolnir")
+
+    assert "missing from disk" in gap.description
+
+
+@pytest.mark.asyncio
+async def test_apps_without_declared_assets_have_no_gaps(tmp_path: Path) -> None:
+    prov, _ = _readiness_provisioner(tmp_path)
+
+    assert await prov.unmet_for_app("some-other-app") == []
