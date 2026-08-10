@@ -10,16 +10,15 @@ after is warm.
 
 import asyncio
 import contextlib
-import glob
 import os
 import sys
 import threading
-from collections.abc import Mapping, Sequence
 from typing import Any
 
 import structlog
 from pydantic import BaseModel
 
+from prodeo.environment.cuda import CUDA12_RUNTIME, cuda_runtime_dirs, missing_cuda_libraries
 from prodeo.plugins import PluginManifest
 from prodeo_mjolnir.engines import SAMPLE_RATE, AudioClip
 
@@ -28,76 +27,15 @@ VERSION = "0.1.0"
 _log = structlog.get_logger(__name__)
 
 
-#: The CUDA libraries CTranslate2 needs but does *not* ship, verified against
-#: the import table of ``ctranslate2.dll`` (4.8.1): it links ``cublas64_12.dll``
-#: - CUDA **12**, not 13 - plus the always-present driver ``nvcuda.dll``.
-#: The wheel does bundle ``cudnn64_9.dll``, but that is only a dispatcher which
-#: in turn dlopens ``cudnn_ops64_9.dll`` / ``cudnn_graph64_9.dll`` / ... , and
-#: those are absent - the classic "Could not locate cudnn_ops64_9.dll" failure.
-#: So we probe for one representative backend rather than the dispatcher.
-#: Bump these - and the ``v1[23].*`` globs below - when CTranslate2 moves to
-#: CUDA 13; re-check with a string dump of ``ctranslate2.dll`` rather than
-#: guessing.
-_REQUIRED_CUDA_DLLS = ("cublas64_12.dll", "cudnn_ops64_9.dll")
-
-
-def _cuda_runtime_dirs(
-    env: Mapping[str, str] | None = None, prefix: str | None = None
-) -> list[str]:
-    """Directories that may hold the CUDA runtime, best candidate first.
-
-    CUDA is a *machine-wide* prerequisite, not a Python dependency: pip's
-    ``nvidia-*`` wheels would be pruned by the next ``uv sync`` (it removes
-    anything the lock doesn't call for), so we look for a system install first.
-    cuDNN ships as its own installer under a separate tree, hence the two
-    families of roots.
-
-    ``env``/``prefix`` are injectable so tests don't touch the real filesystem.
-    """
-    environ = os.environ if env is None else env
-    py_prefix = sys.prefix if prefix is None else prefix
-    program_files = environ.get("ProgramFiles", r"C:\Program Files")
-    candidates: list[str] = []
-
-    # CUDA_PATH itself is *not* consulted: it points at whichever toolkit was
-    # installed last, which is routinely an older major (e.g. v11.0) that has
-    # no cublas64_12.dll. Only explicitly-versioned roots are trusted.
-    for name, value in environ.items():
-        if name.startswith(("CUDA_PATH_V12_", "CUDA_PATH_V13_")):
-            candidates.append(os.path.join(value, "bin"))
-    candidates += glob.glob(
-        os.path.join(program_files, "NVIDIA GPU Computing Toolkit", "CUDA", "v1[23].*", "bin")
-    )
-
-    # cuDNN 9 for Windows installs to its own tree, with the DLLs one level
-    # deeper under a CUDA-major folder (bin/12.9); older layouts use bin/.
-    cudnn_root = os.path.join(program_files, "NVIDIA", "CUDNN")
-    candidates += glob.glob(os.path.join(cudnn_root, "v9.*", "bin", "1[23].*"))
-    candidates += glob.glob(os.path.join(cudnn_root, "v9.*", "bin"))
-    if cudnn_path := environ.get("CUDNN_PATH"):
-        candidates.append(os.path.join(cudnn_path, "bin"))
-
-    # Last resort: the pip wheels, if someone installed them into this venv.
-    # Still supported, but it is the fragile path - see the docstring.
-    candidates += glob.glob(os.path.join(py_prefix, "Lib", "site-packages", "nvidia", "*", "bin"))
-
-    seen: set[str] = set()
-    found: list[str] = []
-    for directory in candidates:
-        key = os.path.normcase(directory)
-        if key not in seen and os.path.isdir(directory):
-            seen.add(key)
-            found.append(directory)
-    return found
-
-
-def _missing_cuda_libs(dirs: Sequence[str]) -> list[str]:
-    """Which of ``_REQUIRED_CUDA_DLLS`` are in none of ``dirs``."""
-    return [
-        dll
-        for dll in _REQUIRED_CUDA_DLLS
-        if not any(os.path.isfile(os.path.join(d, dll)) for d in dirs)
-    ]
+#: What CTranslate2 needs but does not ship, verified against the import table
+#: of ``ctranslate2.dll`` (4.8.1): it links ``cublas64_12.dll`` - CUDA **12**,
+#: not 13. The wheel bundles ``cudnn64_9.dll``, but that is only a dispatcher
+#: which dlopens ``cudnn_ops64_9.dll`` and friends, and those are absent - the
+#: classic "Could not locate cudnn_ops64_9.dll" failure. Discovery lives in
+#: core so the environment view and this engine agree on what "CUDA is
+#: installed" means; the dependency runs the right way round, since this
+#: package already depends on ``prodeo``.
+_REQUIRED_CUDA_DLLS = CUDA12_RUNTIME
 
 
 def _add_cuda_dll_dirs() -> None:
@@ -111,7 +49,7 @@ def _add_cuda_dll_dirs() -> None:
     """
     if sys.platform != "win32":
         return
-    dirs = _cuda_runtime_dirs()
+    dirs = cuda_runtime_dirs()
     path_parts = os.environ.get("PATH", "").split(os.pathsep)
     for bin_dir in dirs:
         with contextlib.suppress(OSError):
@@ -121,7 +59,7 @@ def _add_cuda_dll_dirs() -> None:
         if bin_dir not in path_parts:
             os.environ["PATH"] = bin_dir + os.pathsep + os.environ["PATH"]
             path_parts.append(bin_dir)
-    if missing := _missing_cuda_libs(dirs):
+    if missing := missing_cuda_libraries(dirs, _REQUIRED_CUDA_DLLS):
         _log.warning("stt.cuda_runtime_incomplete", missing=missing, searched=dirs)
 
 
@@ -166,7 +104,7 @@ def _cuda_runtime_usable() -> bool:
     """
     if sys.platform != "win32":
         return True
-    return not _missing_cuda_libs(_cuda_runtime_dirs())
+    return not missing_cuda_libraries(cuda_runtime_dirs(), _REQUIRED_CUDA_DLLS)
 
 
 def _resolve_device(device: str, compute_type: str) -> tuple[str, str]:

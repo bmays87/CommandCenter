@@ -16,7 +16,7 @@ but is written before events become queryable.
 
 ## Consequences
 Zero infrastructure for the common case; the seam for a NATS-backed implementation
-exists (Phase 5) without touching services. Risks accepted: in-process delivery
+exists (the Many Machines phase) without touching services. Risks accepted: in-process delivery
 semantics (at-least-once to persistence, best-effort to live clients) must be
 documented so client authors build reconciliation (ULID cursors) now — retrofitting
 that discipline later is much harder than starting with it.

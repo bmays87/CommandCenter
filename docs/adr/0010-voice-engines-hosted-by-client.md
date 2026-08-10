@@ -56,6 +56,11 @@ multi-GB and CUDA-bound); services never import each other.
 - `prodeo-stt-parakeet` exists as a thin wrapper but stays **out of the
   workspace dev group** — CI never downloads NeMo; its tests skip when the
   package isn't installed and stub NeMo when it is.
+  *Superseded 2026-08-09:* Parakeet moved from NeMo to ONNX Runtime
+  (`onnx-asr`), which took it from ~148 packages to one and made it
+  CPU-capable, so it joined the dev group and its tests now stub `onnx_asr`.
+  The isolation principle is unchanged — it is simply no longer this package
+  that exercises it.
 - A future standalone-manifest split (freeing satellites from the `prodeo`
   dependency entirely) remains possible: the loader only needs the manifest
   shape, not the host.

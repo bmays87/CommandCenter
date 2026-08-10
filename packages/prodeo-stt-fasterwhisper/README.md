@@ -57,6 +57,6 @@ verifies the model with a short probe transcription at load time; on failure it
 logs `stt.cuda_unavailable_fallback` and rebuilds on CPU. Transcription keeps
 working either way — just slower.
 
-For GPU boxes wanting higher accuracy, see `prodeo-stt-parakeet` — same
-plugin kind, brutal NeMo dependency chain, which is exactly why STT engines
-are separate packages.
+For higher accuracy, see `prodeo-stt-parakeet` — same plugin kind, also
+CPU-capable since it moved to ONNX Runtime, and notably able to use a GPU
+through DirectML without any CUDA toolkit.

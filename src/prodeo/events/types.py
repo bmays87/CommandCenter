@@ -12,6 +12,16 @@ SYSTEM_STOPPING: Final = "system.stopping"
 SYSTEM_PLUGIN_LOADED: Final = "system.plugin_loaded"
 SYSTEM_PLUGIN_FAILED: Final = "system.plugin_failed"
 SYSTEM_RETENTION_COMPLETED: Final = "system.retention_completed"
+# extensions manager (ADR-0015). Installation runs code on the user's behalf,
+# so both outcomes are durable facts in the log, not just log lines.
+SYSTEM_EXTENSION_INSTALLED: Final = "system.extension_installed"
+SYSTEM_EXTENSION_INSTALL_FAILED: Final = "system.extension_install_failed"
+SYSTEM_EXTENSION_UNINSTALLED: Final = "system.extension_uninstalled"
+# Supervised app extensions (ADR-0014). Deliberately *not* the ``voice.*``
+# namespace: that is reserved for what a voice client reports about itself
+# (ADR-0010), whereas these are the server's own observations of a process.
+SYSTEM_APP_STARTED: Final = "system.app_started"
+SYSTEM_APP_EXITED: Final = "system.app_exited"
 
 # session lifecycle. ``session.state_changed`` is emitted for *every*
 # transition and is what state is rebuilt from; the specific lifecycle

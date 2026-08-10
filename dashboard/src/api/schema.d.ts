@@ -4,6 +4,100 @@
  */
 
 export interface paths {
+    "/api/apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Apps
+         * @description Installed app extensions and whether each is running.
+         */
+        get: operations["list_apps_api_apps_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/apps/{name}/autostart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set App Autostart
+         * @description Launch this app when the server starts. Off by default.
+         *
+         *     A microphone-listening process should not start itself uninvited, so
+         *     this is opt-in rather than a default the user has to discover.
+         */
+        put: operations["set_app_autostart_api_apps__name__autostart_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/apps/{name}/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restart App */
+        post: operations["restart_app_api_apps__name__restart_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/apps/{name}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start App */
+        post: operations["start_app_api_apps__name__start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/apps/{name}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop App */
+        post: operations["stop_app_api_apps__name__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events": {
         parameters: {
             query?: never;
@@ -14,6 +108,27 @@ export interface paths {
         /** List Events */
         get: operations["list_events_api_events_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extension-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Extension Settings */
+        get: operations["get_extension_settings_api_extension_settings_get"];
+        /**
+         * Put Extension Settings
+         * @description Manager-wide settings - notably where bulk model data is written.
+         */
+        put: operations["put_extension_settings_api_extension_settings_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -50,7 +165,11 @@ export interface paths {
         };
         /**
          * Extension Catalog
-         * @description The sanctioned index. Joined to the installed list by name in the UI.
+         * @description The sanctioned index, each entry annotated for this machine.
+         *
+         *     Entries carry ``unmet``: the requirements this host fails, so the UI
+         *     can say "needs an NVIDIA GPU" instead of letting a user discover it
+         *     after a multi-gigabyte download.
          */
         get: operations["extension_catalog_api_extensions_catalog_get"];
         put?: never;
@@ -78,6 +197,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/extensions/{name}/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Extension Assets
+         * @description Model files this extension needs, and whether the machine has them.
+         */
+        get: operations["list_extension_assets_api_extensions__name__assets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/{name}/assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Download Extension Asset
+         * @description Fetch one asset and wire its path into the owning app's config.
+         */
+        post: operations["download_extension_asset_api_extensions__name__assets__asset_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/extensions/{name}/config": {
         parameters: {
             query?: never;
@@ -99,6 +258,51 @@ export interface paths {
         put: operations["put_extension_config_api_extensions__name__config_put"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/{name}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Extension Enabled
+         * @description Turn an installed extension on or off for the next boot.
+         */
+        put: operations["set_extension_enabled_api_extensions__name__enabled_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/{name}/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install Extension
+         * @description Install a catalog extension.
+         *
+         *     The name is resolved against the sanctioned catalog and the package
+         *     spec comes from there, so this cannot install arbitrary code; an
+         *     unknown name is a 404.
+         */
+        post: operations["install_extension_api_extensions__name__install_post"];
+        /** Uninstall Extension */
+        delete: operations["uninstall_extension_api_extensions__name__install_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -373,6 +577,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/system/environment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * System Environment
+         * @description What this machine is missing, and what would fix it.
+         *
+         *     Read-only and cheap: hardware detection and a couple of local probes,
+         *     so it is safe to poll from a settings page.
+         */
+        get: operations["system_environment_api_system_environment_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/voice/events": {
         parameters: {
             query?: never;
@@ -436,6 +663,134 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /**
+         * AppAutostartRequest
+         * @description Whether an app launches with the server.
+         */
+        AppAutostartRequest: {
+            /** Autostart */
+            autostart: boolean;
+        };
+        /** AppListResponse */
+        AppListResponse: {
+            /** Apps */
+            apps: components["schemas"]["AppStatus"][];
+        };
+        /**
+         * AppStatus
+         * @description One app extension as the dashboard sees it.
+         */
+        AppStatus: {
+            /**
+             * Autostart
+             * @default false
+             */
+            autostart: boolean;
+            /**
+             * Configurable
+             * @default false
+             */
+            configurable: boolean;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Last Error
+             * @default
+             */
+            last_error: string;
+            /** Name */
+            name: string;
+            /** Pid */
+            pid?: number | null;
+            /**
+             * Present
+             * @default false
+             */
+            present: boolean;
+            /**
+             * Restarts
+             * @default 0
+             */
+            restarts: number;
+            /** Started At */
+            started_at?: string | null;
+            /**
+             * State
+             * @default stopped
+             * @enum {string}
+             */
+            state: "stopped" | "starting" | "running" | "exited" | "failed";
+            /**
+             * Version
+             * @default
+             */
+            version: string;
+        };
+        /** AssetListResponse */
+        AssetListResponse: {
+            /** Assets */
+            assets: components["schemas"]["AssetStatus"][];
+        };
+        /**
+         * AssetResult
+         * @description The outcome of a download attempt.
+         */
+        AssetResult: {
+            /** Asset */
+            asset: string;
+            /**
+             * Configured
+             * @default
+             */
+            configured: string;
+            /**
+             * Error
+             * @default
+             */
+            error: string;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Output
+             * @default
+             */
+            output: string;
+            /**
+             * Path
+             * @default
+             */
+            path: string;
+        };
+        /**
+         * AssetStatus
+         * @description One downloadable asset and whether this machine already has it.
+         */
+        AssetStatus: {
+            /**
+             * Approx Mb
+             * @default 0
+             */
+            approx_mb: number;
+            /** Id */
+            id: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /** Missing */
+            missing?: string[];
+            /**
+             * Present
+             * @default false
+             */
+            present: boolean;
+            /** Produces */
+            produces?: string[];
+        };
         /** Catalog */
         Catalog: {
             /** Entries */
@@ -448,8 +803,14 @@ export interface components {
          * @description One extension offered by the index.
          */
         CatalogEntry: {
+            /** Assets */
+            assets?: components["schemas"]["ExtensionAsset"][];
             /** Categories */
             categories?: string[];
+            /** Config Defaults */
+            config_defaults?: {
+                [key: string]: string;
+            };
             /**
              * Description
              * @default
@@ -487,6 +848,20 @@ export interface components {
              * @default
              */
             publisher: string;
+            requires?: components["schemas"]["ExtensionRequirements"];
+            /**
+             * Tier
+             * @default free
+             * @enum {string}
+             */
+            tier: "bundled" | "free" | "paid";
+            /**
+             * Tier Note
+             * @default
+             */
+            tier_note: string;
+            /** Unmet */
+            unmet?: string[];
             /**
              * Version
              * @default
@@ -557,6 +932,47 @@ export interface components {
             prompt: string;
         };
         /**
+         * EnvironmentCheck
+         * @description One thing that is either fine, or fixable.
+         */
+        EnvironmentCheck: {
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /**
+             * Fix
+             * @default
+             */
+            fix: string;
+            /**
+             * Fix Command
+             * @default
+             */
+            fix_command: string;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Relevant
+             * @default true
+             */
+            relevant: boolean;
+        };
+        /** EnvironmentReport */
+        EnvironmentReport: {
+            /** Checks */
+            checks?: components["schemas"]["EnvironmentCheck"][];
+            /** Platform */
+            platform: string;
+            /** Python */
+            python: string;
+        };
+        /**
          * Event
          * @description Immutable envelope for a single event.
          *
@@ -603,6 +1019,46 @@ export interface components {
             cursor: string | null;
             /** Events */
             events: components["schemas"]["Event"][];
+        };
+        /**
+         * ExtensionAsset
+         * @description A model file an extension needs, and how to fetch it.
+         *
+         *     Declared as data so core can provision it without knowing what the engine
+         *     is. ``{python}`` and ``{models_dir}`` are the only substitutions.
+         */
+        ExtensionAsset: {
+            /**
+             * Approx Mb
+             * @default 0
+             */
+            approx_mb: number;
+            /** Command */
+            command?: string[];
+            /**
+             * Config App
+             * @default
+             */
+            config_app: string;
+            /**
+             * Config Pointer
+             * @default
+             */
+            config_pointer: string;
+            /** Id */
+            id: string;
+            /**
+             * Into
+             * @default
+             */
+            into: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /** Produces */
+            produces?: string[];
         };
         /**
          * ExtensionConfig
@@ -689,17 +1145,70 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "loaded" | "failed" | "hosted_by_client";
+            status: "loaded" | "failed" | "hosted_by_client" | "disabled";
             /**
              * Version
              * @default
              */
             version: string;
         };
+        /**
+         * ExtensionEnabledRequest
+         * @description Turn an installed extension on or off for the next boot.
+         */
+        ExtensionEnabledRequest: {
+            /** Enabled */
+            enabled: boolean;
+        };
         /** ExtensionListResponse */
         ExtensionListResponse: {
             /** Extensions */
             extensions: components["schemas"]["ExtensionSummary"][];
+        };
+        /**
+         * ExtensionRequirements
+         * @description What a machine must provide before an extension is worth installing.
+         *
+         *     Checked against :class:`prodeo.environment.Environment` before anything is
+         *     downloaded - Parakeet pulls ~250MB before it would otherwise discover there
+         *     is no GPU.
+         */
+        ExtensionRequirements: {
+            /**
+             * Gpu
+             * @default false
+             */
+            gpu: boolean;
+            /**
+             * Min Python
+             * @default
+             */
+            min_python: string;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Platforms */
+            platforms?: string[];
+        };
+        /**
+         * ExtensionSettings
+         * @description Manager-wide settings, as opposed to one extension's config.
+         */
+        ExtensionSettings: {
+            /** Autostart */
+            autostart?: string[];
+            /**
+             * License Key
+             * @default
+             */
+            license_key: string;
+            /**
+             * Models Dir
+             * @default
+             */
+            models_dir: string;
         };
         /**
          * ExtensionSummary
@@ -751,7 +1260,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "loaded" | "failed" | "hosted_by_client";
+            status: "loaded" | "failed" | "hosted_by_client" | "disabled";
             /**
              * Version
              * @default
@@ -811,6 +1320,31 @@ export interface components {
             status: string;
             /** Version */
             version: string;
+        };
+        /**
+         * InstallResult
+         * @description What an install or uninstall attempt did.
+         */
+        InstallResult: {
+            /**
+             * Command
+             * @default []
+             */
+            command: string[];
+            /**
+             * Error
+             * @default
+             */
+            error: string;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Output
+             * @default
+             */
+            output: string;
+            /** Package */
+            package: string;
         };
         /**
          * Interaction
@@ -1101,6 +1635,154 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_apps_api_apps_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppListResponse"];
+                };
+            };
+        };
+    };
+    set_app_autostart_api_apps__name__autostart_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAutostartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restart_app_api_apps__name__restart_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_app_api_apps__name__start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_app_api_apps__name__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_events_api_events_get: {
         parameters: {
             query?: {
@@ -1127,6 +1809,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_extension_settings_api_extension_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionSettings"];
+                };
+            };
+        };
+    };
+    put_extension_settings_api_extension_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtensionSettings"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionSettings"];
                 };
             };
             /** @description Validation Error */
@@ -1211,6 +1946,69 @@ export interface operations {
             };
         };
     };
+    list_extension_assets_api_extensions__name__assets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_extension_asset_api_extensions__name__assets__asset_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_extension_config_api_extensions__name__config_get: {
         parameters: {
             query?: never;
@@ -1264,6 +2062,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExtensionConfig"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_extension_enabled_api_extensions__name__enabled_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtensionEnabledRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    install_extension_api_extensions__name__install_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    uninstall_extension_api_extensions__name__install_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallResult"];
                 };
             };
             /** @description Validation Error */
@@ -1775,6 +2670,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    system_environment_api_system_environment_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvironmentReport"];
                 };
             };
         };

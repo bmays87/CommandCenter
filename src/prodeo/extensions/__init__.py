@@ -1,16 +1,33 @@
-"""The extensions manager: what is installed, how it is configured (ADR-0014).
+"""The extensions manager: what is installed, configured, and enabled.
 
-A presentation and configuration layer over the Plugin Host - it does not load
-or run anything itself. The Plugin Host stays the single place plugins are
-discovered and instantiated; this package answers "what did it find, what is
-each one configured with, and what can the user change".
+A presentation, configuration, and installation layer over the Plugin Host
+(ADR-0014, ADR-0015) - it does not load or run plugins itself. The Plugin Host
+stays the single place plugins are discovered and instantiated; this package
+answers "what did it find, how is each one configured, is it turned on, and
+what else could the user install".
 """
 
+from prodeo.extensions.assets import AssetProvisioner, AssetResult, AssetStatus
 from prodeo.extensions.catalog import (
     BundledCatalog,
     Catalog,
     CatalogEntry,
+    ExtensionAsset,
     ExtensionCatalog,
+    ExtensionRequirements,
+    ExtensionTier,
+    unmet_requirements,
+)
+from prodeo.extensions.installer import (
+    InstallResult,
+    PackageInstaller,
+    TargetDirInstaller,
+)
+from prodeo.extensions.paths import (
+    activate_extension_path,
+    extension_lib_dir,
+    local_index_dir,
+    workspace_root,
 )
 from prodeo.extensions.service import (
     ExtensionConfig,
@@ -21,19 +38,37 @@ from prodeo.extensions.service import (
 from prodeo.extensions.store import (
     ConfigMap,
     ExtensionConfigStore,
+    ExtensionSettings,
+    ExtensionState,
     JsonFileConfigStore,
 )
 
 __all__ = [
+    "AssetProvisioner",
+    "AssetResult",
+    "AssetStatus",
     "BundledCatalog",
     "Catalog",
     "CatalogEntry",
     "ConfigMap",
+    "ExtensionAsset",
     "ExtensionCatalog",
     "ExtensionConfig",
     "ExtensionConfigStore",
     "ExtensionDetail",
+    "ExtensionRequirements",
     "ExtensionService",
+    "ExtensionSettings",
+    "ExtensionState",
     "ExtensionSummary",
+    "ExtensionTier",
+    "InstallResult",
     "JsonFileConfigStore",
+    "PackageInstaller",
+    "TargetDirInstaller",
+    "activate_extension_path",
+    "extension_lib_dir",
+    "local_index_dir",
+    "unmet_requirements",
+    "workspace_root",
 ]

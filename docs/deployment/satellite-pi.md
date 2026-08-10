@@ -22,8 +22,9 @@ pip install 'prodeo-mjolnir[audio]' \
     prodeo-wakeword-openwakeword prodeo-stt-fasterwhisper prodeo-tts-piper
 ```
 
-All three reference engines are CPU-only. (`prodeo-stt-parakeet` is the GPU
-alternative — do not install it on a Pi.)
+All three reference engines are CPU-only. (`prodeo-stt-parakeet` is the
+higher-accuracy alternative and now runs on CPU too, but a ~600MB model and a
+0.6B-parameter decode are a poor fit for a Pi — keep faster-whisper here.)
 
 Download the models once:
 

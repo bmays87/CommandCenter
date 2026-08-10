@@ -21,14 +21,20 @@ from ulid import ULID
 
 from prodeo.adapters import AdapterManager, LaunchSpec
 from prodeo.api.auth import make_auth_dependency, websocket_authorized
+from prodeo.apps import AppStatus, AppSupervisor
 from prodeo.bus.interface import BackpressurePolicy, EventBus, matches
+from prodeo.environment import EnvironmentReport
+from prodeo.environment import report as environment_report
 from prodeo.errors import (
     AdapterOperationError,
     CapabilityNotSupportedError,
     InteractionAlreadyResolvedError,
     InvalidScheduleError,
+    NotEntitledError,
     ProdeoError,
+    RequirementsNotMetError,
     UnknownAdapterError,
+    UnknownAppError,
     UnknownExtensionError,
     UnknownInteractionError,
     UnknownScheduleError,
@@ -36,12 +42,17 @@ from prodeo.errors import (
 )
 from prodeo.events import Event, new_event
 from prodeo.extensions import (
+    AssetProvisioner,
+    AssetResult,
+    AssetStatus,
     Catalog,
     ExtensionCatalog,
     ExtensionConfig,
     ExtensionDetail,
     ExtensionService,
+    ExtensionSettings,
     ExtensionSummary,
+    InstallResult,
 )
 from prodeo.mediation import (
     Answer,
@@ -65,10 +76,15 @@ _ERROR_STATUS: dict[type[ProdeoError], int] = {
     UnknownInteractionError: 404,
     UnknownScheduleError: 404,
     UnknownExtensionError: 404,
+    UnknownAppError: 404,
     UnknownAdapterError: 400,
     CapabilityNotSupportedError: 400,
     InvalidScheduleError: 400,
     InteractionAlreadyResolvedError: 409,
+    #: Payment Required - the extension exists, the caller may not have it.
+    NotEntitledError: 402,
+    #: Precondition Failed - this machine cannot run it (no GPU, wrong Python).
+    RequirementsNotMetError: 412,
     AdapterOperationError: 502,
 }
 
@@ -198,6 +214,26 @@ class ExtensionConfigRequest(BaseModel):
     values: dict[str, Any] = Field(default_factory=dict)
 
 
+class ExtensionEnabledRequest(BaseModel):
+    """Turn an installed extension on or off for the next boot."""
+
+    enabled: bool
+
+
+class AssetListResponse(BaseModel):
+    assets: list[AssetStatus]
+
+
+class AppListResponse(BaseModel):
+    apps: list[AppStatus]
+
+
+class AppAutostartRequest(BaseModel):
+    """Whether an app launches with the server."""
+
+    autostart: bool
+
+
 def create_app(
     *,
     registry: SessionRegistry,
@@ -211,6 +247,8 @@ def create_app(
     version: str,
     extensions: ExtensionService | None = None,
     catalog: ExtensionCatalog | None = None,
+    apps: AppSupervisor | None = None,
+    assets: AssetProvisioner | None = None,
     api_token: str | None = None,
     dashboard_dir: Path | None = None,
 ) -> FastAPI:
@@ -474,10 +512,13 @@ def create_app(
 
     @app.get("/api/extensions/catalog", response_model=Catalog, dependencies=[auth])
     async def extension_catalog() -> Catalog:
-        """The sanctioned index. Joined to the installed list by name in the UI."""
-        if catalog is None:
-            raise HTTPException(status_code=503, detail="extensions catalog not configured")
-        return await catalog.fetch()
+        """The sanctioned index, each entry annotated for this machine.
+
+        Entries carry ``unmet``: the requirements this host fails, so the UI
+        can say "needs an NVIDIA GPU" instead of letting a user discover it
+        after a multi-gigabyte download.
+        """
+        return await _extensions().catalog()
 
     @app.get("/api/extensions/{name}", response_model=ExtensionDetail, dependencies=[auth])
     async def get_extension(name: str) -> ExtensionDetail:
@@ -486,6 +527,70 @@ def create_app(
     @app.get("/api/extensions/{name}/config", response_model=ExtensionConfig, dependencies=[auth])
     async def get_extension_config(name: str) -> ExtensionConfig:
         return await _extensions().config(name)
+
+    def _require_write() -> None:
+        """Guard every endpoint that changes machine state.
+
+        Config values become plugin constructor arguments and installs execute
+        code, both materially larger than the rest of this read-mostly API - and
+        the API is open by default when no token is set (ADR-0015).
+        """
+        if api_token is None:
+            raise HTTPException(
+                status_code=403,
+                detail="set PRODEO_API_TOKEN to change extensions",
+            )
+
+    @app.post("/api/extensions/{name}/install", response_model=InstallResult, dependencies=[auth])
+    async def install_extension(name: str) -> InstallResult:
+        """Install a catalog extension.
+
+        The name is resolved against the sanctioned catalog and the package
+        spec comes from there, so this cannot install arbitrary code; an
+        unknown name is a 404.
+        """
+        _require_write()
+        return await _extensions().install(name)
+
+    @app.delete("/api/extensions/{name}/install", response_model=InstallResult, dependencies=[auth])
+    async def uninstall_extension(name: str) -> InstallResult:
+        _require_write()
+        return await _extensions().uninstall(name)
+
+    @app.put("/api/extensions/{name}/enabled", response_model=ExtensionSummary, dependencies=[auth])
+    async def set_extension_enabled(name: str, body: ExtensionEnabledRequest) -> ExtensionSummary:
+        """Turn an installed extension on or off for the next boot."""
+        _require_write()
+        return await _extensions().set_enabled(name, body.enabled)
+
+    @app.get("/api/extension-settings", response_model=ExtensionSettings, dependencies=[auth])
+    async def get_extension_settings() -> ExtensionSettings:
+        return await _extensions().settings()
+
+    @app.put("/api/extension-settings", response_model=ExtensionSettings, dependencies=[auth])
+    async def put_extension_settings(body: ExtensionSettings) -> ExtensionSettings:
+        """Manager-wide settings - notably where bulk model data is written."""
+        _require_write()
+        return await _extensions().set_settings(body)
+
+    @app.get("/api/extensions/{name}/assets", response_model=AssetListResponse, dependencies=[auth])
+    async def list_extension_assets(name: str) -> AssetListResponse:
+        """Model files this extension needs, and whether the machine has them."""
+        if assets is None:
+            raise HTTPException(status_code=503, detail="asset provisioner not configured")
+        return AssetListResponse(assets=await assets.list_assets(name))
+
+    @app.post(
+        "/api/extensions/{name}/assets/{asset_id}",
+        response_model=AssetResult,
+        dependencies=[auth],
+    )
+    async def download_extension_asset(name: str, asset_id: str) -> AssetResult:
+        """Fetch one asset and wire its path into the owning app's config."""
+        _require_write()
+        if assets is None:
+            raise HTTPException(status_code=503, detail="asset provisioner not configured")
+        return await assets.download(name, asset_id)
 
     @app.put("/api/extensions/{name}/config", response_model=ExtensionConfig, dependencies=[auth])
     async def put_extension_config(name: str, body: ExtensionConfigRequest) -> ExtensionConfig:
@@ -496,15 +601,66 @@ def create_app(
         the rest of this read-mostly API, and an open server should not offer
         it (ADR-0014).
         """
-        if api_token is None:
-            raise HTTPException(
-                status_code=403,
-                detail="set PRODEO_API_TOKEN to change extension config",
-            )
+        _require_write()
         try:
             return await _extensions().set_config(name, body.values)
         except ValidationError as exc:
             raise HTTPException(status_code=422, detail=exc.errors(include_url=False)) from exc
+
+    def _apps() -> AppSupervisor:
+        if apps is None:  # not wired (schema export, focused tests)
+            raise HTTPException(status_code=503, detail="app supervisor not configured")
+        return apps
+
+    @app.get("/api/system/environment", response_model=EnvironmentReport, dependencies=[auth])
+    async def system_environment() -> EnvironmentReport:
+        """What this machine is missing, and what would fix it.
+
+        Read-only and cheap: hardware detection and a couple of local probes,
+        so it is safe to poll from a settings page.
+        """
+        models_dir = ""
+        if extensions is not None:
+            models_dir = (await extensions.settings()).models_dir
+        return await environment_report(models_dir)
+
+    @app.get("/api/apps", response_model=AppListResponse, dependencies=[auth])
+    async def list_apps() -> AppListResponse:
+        """Installed app extensions and whether each is running."""
+        return AppListResponse(apps=_apps().list())
+
+    @app.post("/api/apps/{name}/start", response_model=AppStatus, dependencies=[auth])
+    async def start_app(name: str) -> AppStatus:
+        _require_write()
+        return await _apps().start_app(name)
+
+    @app.post("/api/apps/{name}/stop", response_model=AppStatus, dependencies=[auth])
+    async def stop_app(name: str) -> AppStatus:
+        _require_write()
+        return await _apps().stop_app(name)
+
+    @app.post("/api/apps/{name}/restart", response_model=AppStatus, dependencies=[auth])
+    async def restart_app(name: str) -> AppStatus:
+        _require_write()
+        return await _apps().restart_app(name)
+
+    @app.put("/api/apps/{name}/autostart", response_model=AppStatus, dependencies=[auth])
+    async def set_app_autostart(name: str, body: AppAutostartRequest) -> AppStatus:
+        """Launch this app when the server starts. Off by default.
+
+        A microphone-listening process should not start itself uninvited, so
+        this is opt-in rather than a default the user has to discover.
+        """
+        _require_write()
+        supervisor = _apps()
+        supervisor.set_autostart(name, body.autostart)
+        if extensions is not None:
+            settings = await extensions.settings()
+            chosen = set(settings.autostart)
+            chosen.add(name) if body.autostart else chosen.discard(name)
+            settings.autostart = sorted(chosen)
+            await extensions.set_settings(settings)
+        return supervisor.status_of(name)
 
     @app.websocket("/api/ws/events")
     async def event_stream(ws: WebSocket) -> None:

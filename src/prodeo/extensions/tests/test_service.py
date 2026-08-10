@@ -6,8 +6,15 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from prodeo.errors import UnknownExtensionError
-from prodeo.extensions import ExtensionService, JsonFileConfigStore
+from prodeo.errors import NotEntitledError, UnknownExtensionError
+from prodeo.events import Event
+from prodeo.extensions import (
+    Catalog,
+    CatalogEntry,
+    ExtensionService,
+    InstallResult,
+    JsonFileConfigStore,
+)
 from prodeo.plugins import ExtensionInfo, PluginManifest
 
 
@@ -137,6 +144,203 @@ async def test_config_without_saved_overlay_is_all_environment(tmp_path: Path) -
     config = await svc.config("ollama")
     assert config.sources == {"model": "environment"}
     assert config.restart_required is False
+
+
+# --- installation and enablement -------------------------------------------
+
+
+class FakeInstaller:
+    """Records what it was asked to install; can be told to fail."""
+
+    def __init__(self, ok: bool = True) -> None:
+        self.ok = ok
+        self.installed: list[str] = []
+        self.uninstalled: list[str] = []
+
+    async def install(self, package: str) -> InstallResult:
+        self.installed.append(package)
+        return InstallResult(ok=self.ok, package=package, error="" if self.ok else "boom")
+
+    async def uninstall(self, package: str) -> InstallResult:
+        self.uninstalled.append(package)
+        return InstallResult(ok=self.ok, package=package, error="" if self.ok else "boom")
+
+
+class FakeCatalog:
+    def __init__(self, entries: list[CatalogEntry]) -> None:
+        self._entries = entries
+
+    async def fetch(self) -> Catalog:
+        return Catalog(source="fake", entries=self._entries)
+
+
+def _installable_service(
+    tmp_path: Path, installer: FakeInstaller, events: list[Event] | None = None
+) -> ExtensionService:
+    sink = events if events is not None else []
+
+    async def publish(event: Event) -> None:
+        sink.append(event)
+
+    return ExtensionService(
+        inventory_fn=lambda: [ExtensionInfo("ollama", "loaded", manifest=_manifest())],
+        env_config={},
+        store=JsonFileConfigStore(tmp_path / "extensions.json"),
+        catalog=FakeCatalog(
+            [CatalogEntry(name="ollama", package="prodeo-summarizer-ollama", version="0.1.0")]
+        ),
+        installer=installer,
+        publish=publish,
+    )
+
+
+@pytest.mark.asyncio
+async def test_install_resolves_the_package_from_the_catalog(tmp_path: Path) -> None:
+    # The caller passes a name, never a package spec - that is what stops this
+    # endpoint being a general-purpose "run arbitrary code" API.
+    installer = FakeInstaller()
+    events: list[Event] = []
+    svc = _installable_service(tmp_path, installer, events)
+
+    result = await svc.install("ollama")
+
+    assert result.ok is True
+    assert installer.installed == ["prodeo-summarizer-ollama"]
+    assert [e.type for e in events] == ["system.extension_installed"]
+    assert events[0].payload["package"] == "prodeo-summarizer-ollama"
+
+
+@pytest.mark.asyncio
+async def test_installing_something_not_in_the_catalog_is_refused(tmp_path: Path) -> None:
+    installer = FakeInstaller()
+    svc = _installable_service(tmp_path, installer)
+
+    with pytest.raises(UnknownExtensionError, match="not in the extension catalog"):
+        await svc.install("totally-made-up")
+
+    assert installer.installed == []  # never reached the installer
+
+
+@pytest.mark.asyncio
+async def test_failed_install_emits_the_failure_event(tmp_path: Path) -> None:
+    events: list[Event] = []
+    svc = _installable_service(tmp_path, FakeInstaller(ok=False), events)
+
+    result = await svc.install("ollama")
+
+    assert result.ok is False
+    assert [e.type for e in events] == ["system.extension_install_failed"]
+    assert events[0].payload["error"] == "boom"
+
+
+@pytest.mark.asyncio
+async def test_uninstall_clears_saved_state(tmp_path: Path) -> None:
+    installer = FakeInstaller()
+    events: list[Event] = []
+    svc = _installable_service(tmp_path, installer, events)
+    await svc.set_config("ollama", {"model": "llama3.2"})
+    await svc.set_enabled("ollama", False)
+
+    result = await svc.uninstall("ollama")
+
+    assert result.ok is True and installer.uninstalled == ["prodeo-summarizer-ollama"]
+    # A reinstall should start clean, not inherit config for a version that
+    # may no longer have those fields.
+    assert (await svc.config("ollama")).values == {}
+    assert "system.extension_uninstalled" in [e.type for e in events]
+
+
+@pytest.mark.asyncio
+async def test_failed_uninstall_keeps_saved_state(tmp_path: Path) -> None:
+    svc = _installable_service(tmp_path, FakeInstaller(ok=False))
+    await svc.set_config("ollama", {"model": "llama3.2"})
+
+    result = await svc.uninstall("ollama")
+
+    assert result.ok is False
+    assert (await svc.config("ollama")).values == {"model": "llama3.2"}
+
+
+@pytest.mark.asyncio
+async def test_set_enabled_persists_and_reports_disabled(tmp_path: Path) -> None:
+    svc = _installable_service(tmp_path, FakeInstaller())
+
+    summary = await svc.set_enabled("ollama", False)
+
+    assert summary.status == "disabled"
+    assert await svc._store.disabled() == {"ollama"}
+    assert (await svc.set_enabled("ollama", True)).status == "loaded"
+
+
+@pytest.mark.asyncio
+async def test_install_without_an_installer_is_refused(tmp_path: Path) -> None:
+    svc = _service(tmp_path, [ExtensionInfo("ollama", "loaded", manifest=_manifest())])
+    with pytest.raises(UnknownExtensionError):
+        await svc.install("ollama")
+
+
+@pytest.mark.asyncio
+async def test_settings_round_trip(tmp_path: Path) -> None:
+    svc = _installable_service(tmp_path, FakeInstaller())
+    settings = await svc.settings()
+    settings.models_dir = str(tmp_path / "models")
+    saved = await svc.set_settings(settings)
+    assert saved.models_dir == str(tmp_path / "models")
+
+
+def _paid_service(tmp_path: Path, installer: FakeInstaller) -> ExtensionService:
+    return ExtensionService(
+        inventory_fn=lambda: [],
+        env_config={},
+        store=JsonFileConfigStore(tmp_path / "extensions.json"),
+        catalog=FakeCatalog(
+            [
+                CatalogEntry(
+                    name="mjolnir",
+                    package="prodeo-mjolnir[audio]",
+                    tier="paid",
+                    tier_note="Mjolnir is a paid extension.",
+                )
+            ]
+        ),
+        installer=installer,
+    )
+
+
+@pytest.mark.asyncio
+async def test_paid_extension_needs_a_licence_key(tmp_path: Path) -> None:
+    installer = FakeInstaller()
+    svc = _paid_service(tmp_path, installer)
+
+    with pytest.raises(NotEntitledError, match="paid extension"):
+        await svc.install("mjolnir")
+
+    assert installer.installed == []  # never reached the installer
+
+
+@pytest.mark.asyncio
+async def test_paid_extension_installs_once_entitled(tmp_path: Path) -> None:
+    installer = FakeInstaller()
+    svc = _paid_service(tmp_path, installer)
+    settings = await svc.settings()
+    settings.license_key = "test-key"
+    await svc.set_settings(settings)
+
+    result = await svc.install("mjolnir")
+
+    assert result.ok is True
+    assert installer.installed == ["prodeo-mjolnir[audio]"]
+
+
+@pytest.mark.asyncio
+async def test_whitespace_is_not_a_licence_key(tmp_path: Path) -> None:
+    svc = _paid_service(tmp_path, FakeInstaller())
+    settings = await svc.settings()
+    settings.license_key = "   "
+    await svc.set_settings(settings)
+
+    with pytest.raises(NotEntitledError):
+        await svc.install("mjolnir")
 
 
 def test_inventory_is_read_lazily(tmp_path: Path) -> None:

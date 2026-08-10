@@ -5,7 +5,7 @@
 
 ## Context
 
-Phase 6 calls for installing and extending Command Center from the dashboard
+The Onboarding & Extensibility phase calls for installing and extending Command Center from the dashboard
 rather than by hand-assembling `MJOLNIR_*` env vars — an experience closer to
 VS Code's extensions view than to `uv pip install` plus a restart. ADR-0005
 accepted in-process plugins with no isolation and named the trigger for
@@ -20,7 +20,7 @@ Three facts shaped the design:
    knowledge that the plugin system existed.
 2. **Config was write-only from the user's side.** `PRODEO_PLUGINS` and friends
    are single JSON env blobs. Changing one plugin's setting means rewriting the
-   blob in a shell profile — exactly the ritual Phase 6 exists to kill.
+   blob in a shell profile — exactly the ritual this phase exists to kill.
 3. **Mjölnir is not an in-process plugin.** It is a separate process that talks
    to the server over HTTP/WS and says so in its own client module: *"it is a
    client, not a subsystem"*. Its engines are plugins; Mjölnir itself is not.

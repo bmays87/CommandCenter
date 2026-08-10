@@ -3,6 +3,12 @@
 Each phase ends with a tagged release, a runnable system, and green CI. Nothing in a
 later phase blocks a user of an earlier phase.
 
+Phases are resequenced when priorities change; the number is the order we intend to
+build in, not an identity. Docs and ADRs therefore refer to phases by **name**
+("the Many Machines phase") so a reordering does not silently falsify them.
+Most recent change: **Onboarding & Extensibility and Many Machines swapped on
+2026-08-09** — see the note under Many Machines.
+
 ## Phase 0 — Foundations (docs + skeleton)
 Repository scaffolding, CI (ruff, mypy, pytest, dashboard build), event envelope and
 core schemas, `EventBus` interface + in-process implementation, SQLite `EventStore`,
@@ -45,7 +51,7 @@ daily summary is a core service whose *prose* comes from the optional
 
 ## Phase 4 — Voice
 **Mjölnir** (`prodeo-mjolnir`) voice client: OpenWakeWord + STT plugins
-(faster-whisper default, Parakeet optional) + Piper TTS; wake word defaults to
+(faster-whisper default, Parakeet for accuracy) + Piper TTS; wake word defaults to
 the proper pronunciation of "mjölnir" and is user-configurable; deterministic
 intent router; attention-aware notification routing; satellite deployment
 docs (Pi).
@@ -61,13 +67,7 @@ a stock OpenWakeWord model is the loudly-logged fallback; the exit scenario
 is pinned by `tests/integration/test_voice_flow.py` (fake mic/engines, real
 server, real HTTP + WebSocket).
 
-## Phase 5 — Many Machines
-`EventBus` implementation over NATS (or Redis Streams — ADR at the time); node
-identity + remote agent nodes reporting to a hub; dashboard multi-node fleet view;
-deployment recipes (Docker, systemd, Home Assistant add-on).
-**Exit:** sessions on two machines visible and controllable from one dashboard.
-
-## Phase 6 — Onboarding & Extensibility (web-first setup)
+## Phase 5 — Onboarding & Extensibility (web-first setup)
 Make installing and extending Command Center a task in the dashboard, not a
 shell ritual — motivated by voice setup today needing hand-assembled `MJOLNIR_*`
 env vars, manual model downloads, and manual CUDA-runtime installs.
@@ -99,6 +99,21 @@ env vars, manual model downloads, and manual CUDA-runtime installs.
 **Exit:** a new user installs the dashboard, adds the Claude Code adapter and
 the voice client, and approves a permission by voice — without opening a
 terminal.
+
+## Phase 6 — Many Machines
+`EventBus` implementation over NATS (or Redis Streams — ADR at the time); node
+identity + remote agent nodes reporting to a hub; dashboard multi-node fleet view;
+deployment recipes (systemd, Home Assistant add-on).
+**Exit:** sessions on two machines visible and controllable from one dashboard.
+*Deferred* — swapped with Onboarding & Extensibility on 2026-08-09: there is no
+multi-machine use case on the horizon, while the single-machine setup ritual is a
+daily cost. Nothing is lost by waiting — the groundwork is already in place and
+was designed for it: node identity is on every event envelope
+(`Event.node`, `PRODEO_NODE_NAME`) and `EventBus` is a Protocol precisely so a
+broker-backed implementation can arrive without touching services (ADR-0002).
+Docker was dropped from the recipe list: see the note in `docker/README.md` —
+containerizing the core fights its own premise, since the adapters supervise
+agent sessions by watching **host-local** state.
 
 ## Later / Icebox
 Plugin index with signing; Kubernetes operator; Git/Docker integrations as plugins;

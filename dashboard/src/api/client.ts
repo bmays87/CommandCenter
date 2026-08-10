@@ -1,9 +1,15 @@
 import type {
   AnswerRequest,
+  AppStatus,
+  AssetResult,
+  AssetStatus,
+  EnvironmentReport,
   Catalog,
   ExtensionConfig,
   ExtensionDetail,
+  ExtensionSettings,
   ExtensionSummary,
+  InstallResult,
   Interaction,
   LaunchRequest,
   ProdeoEvent,
@@ -75,6 +81,12 @@ async function put<T>(path: string, body?: unknown): Promise<T> {
   );
 }
 
+async function del<T>(path: string): Promise<T> {
+  return parse<T>(
+    await fetch(path, { method: "DELETE", headers: authHeaders() }),
+  );
+}
+
 export interface SessionListResponse {
   sessions: Session[];
 }
@@ -93,8 +105,17 @@ export interface ExtensionListResponse {
   extensions: ExtensionSummary[];
 }
 
+export interface AppListResponse {
+  apps: AppStatus[];
+}
+
+export interface AssetListResponse {
+  assets: AssetStatus[];
+}
+
 export const api = {
-  health: () => get<{ status: string; version: string; node: string }>("/api/health"),
+  health: () =>
+    get<{ status: string; version: string; node: string }>("/api/health"),
   sessions: () => get<SessionListResponse>("/api/sessions"),
   session: (id: string) => get<Session>(`/api/sessions/${id}`),
   sessionEvents: (id: string, limit = 500) =>
@@ -119,20 +140,44 @@ export const api = {
     if (params?.status) search.set("status", params.status);
     if (params?.session) search.set("session", params.session);
     const qs = search.toString();
-    return get<InteractionListResponse>(`/api/interactions${qs ? `?${qs}` : ""}`);
+    return get<InteractionListResponse>(
+      `/api/interactions${qs ? `?${qs}` : ""}`,
+    );
   },
   answerInteraction: (id: string, body: AnswerRequest) =>
     post<Interaction>(`/api/interactions/${id}/answer`, body),
   launchSession: (body: LaunchRequest) => post<Session>("/api/sessions", body),
-  terminateSession: (id: string) => post<Session>(`/api/sessions/${id}/terminate`),
+  terminateSession: (id: string) =>
+    post<Session>(`/api/sessions/${id}/terminate`),
   promptSession: (id: string, prompt: string) =>
     post<Session>(`/api/sessions/${id}/prompt`, { prompt }),
   extensions: () => get<ExtensionListResponse>("/api/extensions"),
   extension: (name: string) => get<ExtensionDetail>(`/api/extensions/${name}`),
   extensionCatalog: () => get<Catalog>("/api/extensions/catalog"),
-  extensionConfig: (name: string) => get<ExtensionConfig>(`/api/extensions/${name}/config`),
+  extensionConfig: (name: string) =>
+    get<ExtensionConfig>(`/api/extensions/${name}/config`),
   saveExtensionConfig: (name: string, values: Record<string, unknown>) =>
     put<ExtensionConfig>(`/api/extensions/${name}/config`, { values }),
+  installExtension: (name: string) =>
+    post<InstallResult>(`/api/extensions/${name}/install`),
+  uninstallExtension: (name: string) =>
+    del<InstallResult>(`/api/extensions/${name}/install`),
+  setExtensionEnabled: (name: string, enabled: boolean) =>
+    put<ExtensionSummary>(`/api/extensions/${name}/enabled`, { enabled }),
+  extensionSettings: () => get<ExtensionSettings>("/api/extension-settings"),
+  saveExtensionSettings: (settings: ExtensionSettings) =>
+    put<ExtensionSettings>("/api/extension-settings", settings),
+  extensionAssets: (name: string) =>
+    get<AssetListResponse>(`/api/extensions/${name}/assets`),
+  downloadAsset: (name: string, assetId: string) =>
+    post<AssetResult>(`/api/extensions/${name}/assets/${assetId}`),
+  environment: () => get<EnvironmentReport>("/api/system/environment"),
+  apps: () => get<AppListResponse>("/api/apps"),
+  startApp: (name: string) => post<AppStatus>(`/api/apps/${name}/start`),
+  stopApp: (name: string) => post<AppStatus>(`/api/apps/${name}/stop`),
+  restartApp: (name: string) => post<AppStatus>(`/api/apps/${name}/restart`),
+  setAppAutostart: (name: string, autostart: boolean) =>
+    put<AppStatus>(`/api/apps/${name}/autostart`, { autostart }),
 };
 
 export function wsUrl(types: string, after?: string): string {

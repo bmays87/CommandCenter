@@ -16,11 +16,21 @@ import structlog
 from prodeo import __version__
 from prodeo.adapters import AdapterManager
 from prodeo.api import ApiServer, create_app
+from prodeo.apps import AppSupervisor
 from prodeo.bus import InProcessEventBus
 from prodeo.config import Settings
 from prodeo.events import new_event
 from prodeo.events import types as ev
-from prodeo.extensions import BundledCatalog, ExtensionService, JsonFileConfigStore
+from prodeo.extensions import (
+    AssetProvisioner,
+    BundledCatalog,
+    ExtensionService,
+    JsonFileConfigStore,
+    TargetDirInstaller,
+    activate_extension_path,
+    local_index_dir,
+    workspace_root,
+)
 from prodeo.logging import configure_logging
 from prodeo.mediation import MediationService
 from prodeo.notify import Notifier
@@ -99,6 +109,10 @@ class Server:
             tz=settings.scheduler_tz,
             node=settings.node_name,
         )
+        # Runtime-installed extensions live outside .venv (so `uv sync` cannot
+        # delete them) and become importable by joining sys.path here, before
+        # the Plugin Host discovers entry points in start().
+        self.extension_lib = activate_extension_path(settings.data_dir)
         # The extensions manager reads the host's inventory lazily: it is wired
         # here, but the host does not populate it until start() (ADR-0014).
         self.extension_config = JsonFileConfigStore(settings.extension_config_path)
@@ -110,6 +124,38 @@ class Server:
                 "summarizer": settings.plugins,
             },
             store=self.extension_config,
+            catalog=BundledCatalog(),
+            installer=TargetDirInstaller(
+                self.extension_lib,
+                # In a checkout, first-party extensions are unpublished and
+                # depend on each other, so they can only be installed from
+                # locally built wheels. Elsewhere both are None and installs
+                # come from the package index as normal.
+                find_links=local_index_dir(settings.data_dir),
+                workspace=workspace_root(),
+            ),
+            publish=self.bus.publish,
+            node=settings.node_name,
+            default_models_dir=settings.default_models_dir,
+        )
+        self.assets = AssetProvisioner(
+            catalog=BundledCatalog(),
+            store=self.extension_config,
+            models_dir_fn=self._models_dir,
+        )
+        # Supervises app-class extensions (Mjölnir). Started last and stopped
+        # first: the children are HTTP clients of this server, so the listener
+        # must exist before them and outlive them. server_url is a callable
+        # because api_port may be 0 and the real port is only known once the
+        # API is up.
+        self.apps = AppSupervisor(
+            node=settings.node_name,
+            publish=self.bus.publish,
+            presence=self.presence,
+            config_fn=self._app_config,
+            autostart_fn=self._app_autostart,
+            server_url_fn=lambda: f"http://{settings.api_host}:{self.api.port}",
+            api_token=settings.api_token,
         )
         self.api = ApiServer(
             create_app(
@@ -124,12 +170,25 @@ class Server:
                 version=__version__,
                 extensions=self.extensions,
                 catalog=BundledCatalog(),
+                apps=self.apps,
+                assets=self.assets,
                 api_token=settings.api_token,
                 dashboard_dir=settings.dashboard_dir,
             ),
             host=settings.api_host,
             port=settings.api_port,
         )
+
+    async def _models_dir(self) -> str:
+        """The chosen models root, or the default under the data dir."""
+        return (await self.extensions.settings()).models_dir
+
+    async def _app_config(self, name: str) -> dict[str, object]:
+        """Saved config for an app, from the same store plugins use."""
+        return dict(await self.extension_config.get(name) or {})
+
+    async def _app_autostart(self) -> list[str]:
+        return list((await self.extension_config.settings()).autostart)
 
     async def start(self) -> None:
         await self.store.open()
@@ -145,9 +204,11 @@ class Server:
                 payload={"version": __version__},
             )
         )
-        # The saved overlay must land before load(): the host reads config at
-        # instantiation time, so applying it later would be a no-op.
-        self.plugins.apply_saved_config(await self.extension_config.load())
+        # The saved overlay and disabled set must land before load(): the host
+        # reads both at instantiation time, so applying them later is a no-op.
+        state = await self.extension_config.state()
+        self.plugins.apply_saved_config(state.config)
+        self.plugins.apply_disabled(state.disabled)
         loaded = await self.plugins.load()
         for adapter in loaded.adapters:
             self.adapters.add(adapter)
@@ -164,6 +225,9 @@ class Server:
         await self.summary.start()
         await self.retention.start()
         await self.api.start()
+        # Last: supervised apps are HTTP clients of this server and need the
+        # resolved port, which only exists once the API is listening.
+        await self.apps.start()
         _log.info(
             "server.started",
             node=self.settings.node_name,
@@ -172,6 +236,8 @@ class Server:
         )
 
     async def stop(self) -> None:
+        # First: kill the children before the server they talk to disappears.
+        await self.apps.stop()
         await self.api.stop()
         await self.retention.stop()
         await self.summary.stop()

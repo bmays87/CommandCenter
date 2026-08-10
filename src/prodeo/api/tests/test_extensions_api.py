@@ -12,7 +12,12 @@ from pydantic import BaseModel
 from prodeo.adapters import AdapterManager
 from prodeo.api import create_app
 from prodeo.bus import InProcessEventBus
-from prodeo.extensions import BundledCatalog, ExtensionService, JsonFileConfigStore
+from prodeo.extensions import (
+    BundledCatalog,
+    ExtensionService,
+    InstallResult,
+    JsonFileConfigStore,
+)
 from prodeo.mediation import MediationService
 from prodeo.persistence import SqliteEventStore
 from prodeo.plugins import ExtensionInfo, PluginManifest
@@ -50,6 +55,16 @@ def _inventory() -> list[ExtensionInfo]:
     ]
 
 
+class FakeInstaller:
+    """Stands in for uv/pip so no test ever installs anything."""
+
+    async def install(self, package: str) -> InstallResult:
+        return InstallResult(ok=True, package=package, output="installed")
+
+    async def uninstall(self, package: str) -> InstallResult:
+        return InstallResult(ok=True, package=package, output="removed")
+
+
 def _app(tmp_path: Path, *, api_token: str | None = TOKEN, wire_extensions: bool = True) -> FastAPI:
     bus = InProcessEventBus()
     registry = SessionRegistry(bus)
@@ -60,6 +75,9 @@ def _app(tmp_path: Path, *, api_token: str | None = TOKEN, wire_extensions: bool
             inventory_fn=_inventory,
             env_config={"summarizer": {"ollama": {"model": "from-env"}}},
             store=JsonFileConfigStore(tmp_path / "extensions.json"),
+            catalog=BundledCatalog(),
+            installer=FakeInstaller(),
+            publish=bus.publish,
         )
         if wire_extensions
         else None
@@ -184,3 +202,61 @@ async def test_unwired_manager_reports_unavailable(tmp_path: Path) -> None:
     async with _client(_app(tmp_path, wire_extensions=False)) as c:
         assert (await c.get("/api/extensions")).status_code == 503
         assert (await c.get("/api/extensions/catalog")).status_code == 503
+
+
+# --- install / uninstall / enable -------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_install_resolves_a_catalog_name(client: httpx.AsyncClient) -> None:
+    resp = await client.post("/api/extensions/ollama/install")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    # The package spec came from the catalog, not from the request.
+    assert body["package"] == "prodeo-summarizer-ollama"
+
+
+@pytest.mark.asyncio
+async def test_installing_a_name_not_in_the_catalog_is_404(client: httpx.AsyncClient) -> None:
+    # The endpoint takes a catalog name, never a package spec, so it cannot be
+    # used to install arbitrary code.
+    resp = await client.post("/api/extensions/some-attacker-package/install")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_enable_disable_round_trip(client: httpx.AsyncClient) -> None:
+    off = await client.put("/api/extensions/ollama/enabled", json={"enabled": False})
+    assert off.status_code == 200 and off.json()["status"] == "disabled"
+
+    on = await client.put("/api/extensions/ollama/enabled", json={"enabled": True})
+    assert on.json()["status"] == "loaded"
+
+
+@pytest.mark.asyncio
+async def test_extension_settings_round_trip(client: httpx.AsyncClient, tmp_path: Path) -> None:
+    assert (await client.get("/api/extension-settings")).json()["models_dir"] == ""
+
+    saved = await client.put(
+        "/api/extension-settings", json={"models_dir": str(tmp_path / "models"), "autostart": []}
+    )
+    assert saved.status_code == 200
+    assert saved.json()["models_dir"] == str(tmp_path / "models")
+
+
+@pytest.mark.asyncio
+async def test_every_state_changing_route_is_refused_on_an_open_server(tmp_path: Path) -> None:
+    # Installing executes code; config values become constructor arguments.
+    # An unauthenticated server must offer none of it, while reads still work.
+    async with _client(_app(tmp_path, api_token=None), token=None) as anon:
+        assert (await anon.get("/api/extensions")).status_code == 200
+        for resp in (
+            await anon.post("/api/extensions/ollama/install"),
+            await anon.request("DELETE", "/api/extensions/ollama/install"),
+            await anon.put("/api/extensions/ollama/enabled", json={"enabled": False}),
+            await anon.put("/api/extension-settings", json={"models_dir": "x", "autostart": []}),
+            await anon.put("/api/extensions/ollama/config", json={"values": {}}),
+        ):
+            assert resp.status_code == 403, resp.request.url
+            assert "PRODEO_API_TOKEN" in resp.json()["detail"]

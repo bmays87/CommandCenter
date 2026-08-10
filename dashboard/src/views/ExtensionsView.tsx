@@ -3,13 +3,25 @@ import { useState } from "react";
 
 import { api } from "../api/client";
 import type { CatalogEntry, ExtensionSummary } from "../api/types";
+import { AppsPanel } from "./AppsPanel";
+import { EnvironmentPanel } from "./EnvironmentPanel";
 import { SchemaForm } from "./SchemaForm";
 
-function StatusBadge({ extension }: { extension: ExtensionSummary }) {
-  const status = extension.status;
+function StatusBadge({ status }: { status: string }) {
   const text =
-    status === "hosted_by_client" ? "voice client" : status === "failed" ? "failed" : "loaded";
+    status === "hosted_by_client"
+      ? "voice client"
+      : status === "failed"
+        ? "failed"
+        : status === "disabled"
+          ? "disabled"
+          : "loaded";
   return <span className={`badge ext-${status}`}>{text}</span>;
+}
+
+/** Installs/removals apply at the next boot; be honest rather than fake it. */
+function RestartNotice() {
+  return <div className="notice">Restart the server for this to take effect.</div>;
 }
 
 function ExtensionCard({
@@ -29,7 +41,7 @@ function ExtensionCard({
     >
       <div className="card-top">
         {extension.kind ? <span className="agent-chip">{extension.kind}</span> : null}
-        <StatusBadge extension={extension} />
+        <StatusBadge status={extension.status} />
       </div>
       <div className="card-title">{extension.name}</div>
       {extension.description ? <p className="card-meta">{extension.description}</p> : null}
@@ -41,35 +53,144 @@ function ExtensionCard({
   );
 }
 
-function AvailableCard({ entry }: { entry: CatalogEntry }) {
+function AvailableCard({ entry, onInstalled }: { entry: CatalogEntry; onInstalled: () => void }) {
+  const [error, setError] = useState("");
+  const install = useMutation({
+    mutationFn: () => api.installExtension(entry.name),
+    onSuccess: (result) => {
+      if (result.ok) {
+        setError("");
+        onInstalled();
+      } else {
+        setError(result.error || "install failed");
+      }
+    },
+    onError: (err: unknown) => setError(err instanceof Error ? err.message : String(err)),
+  });
+
+  const paid = entry.tier === "paid";
+  // Server-computed against this machine: a non-empty list means installing
+  // would only waste a large download.
+  const unmet = entry.unmet ?? [];
+  const blocked = unmet.length > 0;
   return (
     <div className="card ext-card ext-available">
       <div className="card-top">
         <span className="agent-chip">{entry.kind || entry.extension_class}</span>
-        <span className="badge ext-available-badge">not installed</span>
+        <span className={`badge ${blocked ? "ext-blocked" : `ext-tier-${entry.tier}`}`}>
+          {blocked ? "unsupported here" : paid ? "paid" : entry.tier === "bundled" ? "bundled" : "not installed"}
+        </span>
       </div>
       <div className="card-title">{entry.name}</div>
       {entry.description ? <p className="card-meta">{entry.description}</p> : null}
       <div className="card-footer">
-        <code>uv pip install {entry.package}</code>
+        <code>{entry.package}</code>
+        {entry.license ? <span className="model"> {entry.license}</span> : null}
       </div>
+      {entry.requires?.note ? <p className="field-help">{entry.requires.note}</p> : null}
+      {entry.tier_note ? <p className="field-help">{entry.tier_note}</p> : null}
+      {blocked ? (
+        <ul className="ext-unmet">
+          {unmet.map((reason) => (
+            <li key={reason}>{reason}</li>
+          ))}
+        </ul>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => install.mutate()}
+        disabled={install.isPending || blocked}
+        title={blocked ? unmet.join("; ") : undefined}
+      >
+        {install.isPending
+          ? "Installing…"
+          : blocked
+            ? "Unavailable"
+            : paid
+              ? "Install (licensed)"
+              : "Install"}
+      </button>
+      {install.isPending ? (
+        <p className="field-help">
+          First install from a source checkout builds the workspace wheels — this takes a minute.
+        </p>
+      ) : null}
+      {error ? <div className="notice error">{error}</div> : null}
     </div>
   );
 }
 
-function ConfigPanel({ name }: { name: string }) {
+function ManagerSettings() {
+  const queryClient = useQueryClient();
+  const [models, setModels] = useState<string | null>(null);
+  const [licence, setLicence] = useState<string | null>(null);
+  const settings = useQuery({ queryKey: ["extension-settings"], queryFn: api.extensionSettings });
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.saveExtensionSettings({
+        autostart: settings.data?.autostart ?? [],
+        models_dir: models ?? settings.data?.models_dir ?? "",
+        license_key: licence ?? settings.data?.license_key ?? "",
+      }),
+    onSuccess: () => {
+      setModels(null);
+      setLicence(null);
+      void queryClient.invalidateQueries({ queryKey: ["extension-settings"] });
+    },
+  });
+
+  return (
+    <section className="ext-detail">
+      <h2>Settings</h2>
+      <div className="form-row">
+        <label htmlFor="models-dir">Models directory</label>
+        <input
+          id="models-dir"
+          type="text"
+          value={models ?? settings.data?.models_dir ?? ""}
+          placeholder="e.g. F:\prodeo\models"
+          onChange={(e) => setModels(e.target.value)}
+        />
+        <p className="field-help">
+          Where downloaded models, voices, and weights are written. These run to gigabytes — put
+          them somewhere with room, not necessarily the system drive. Empty uses each
+          engine&rsquo;s own default.
+        </p>
+      </div>
+      <div className="form-row">
+        <label htmlFor="licence-key">Licence key</label>
+        <input
+          id="licence-key"
+          type="password"
+          value={licence ?? settings.data?.license_key ?? ""}
+          placeholder="required for paid extensions"
+          onChange={(e) => setLicence(e.target.value)}
+        />
+        <p className="field-help">Unlocks paid extensions such as Mjölnir.</p>
+      </div>
+      <button type="button" onClick={() => save.mutate()} disabled={save.isPending}>
+        {save.isPending ? "Saving…" : "Save"}
+      </button>
+    </section>
+  );
+}
+
+function ConfigPanel({ name, status }: { name: string; status: string }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
 
-  const detail = useQuery({
-    queryKey: ["extension", name],
-    queryFn: () => api.extension(name),
-  });
+  const detail = useQuery({ queryKey: ["extension", name], queryFn: () => api.extension(name) });
   const config = useQuery({
     queryKey: ["extension-config", name],
     queryFn: () => api.extensionConfig(name),
   });
+
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ["extensions"] });
+    void queryClient.invalidateQueries({ queryKey: ["extension", name] });
+  };
 
   const save = useMutation({
     mutationFn: (values: Record<string, unknown>) => api.saveExtensionConfig(name, values),
@@ -84,10 +205,21 @@ function ConfigPanel({ name }: { name: string }) {
     },
   });
 
+  const toggle = useMutation({
+    mutationFn: (enabled: boolean) => api.setExtensionEnabled(name, enabled),
+    onSuccess: refresh,
+  });
+
+  const uninstall = useMutation({
+    mutationFn: () => api.uninstallExtension(name),
+    onSuccess: refresh,
+  });
+
   if (detail.isLoading || config.isLoading) return <div className="notice">Loading…</div>;
   if (detail.error) return <div className="notice error">{String(detail.error)}</div>;
 
   const schema = detail.data?.config_schema;
+  const disabled = status === "disabled";
   return (
     <section className="ext-detail">
       <h2>{name}</h2>
@@ -98,6 +230,25 @@ function ConfigPanel({ name }: { name: string }) {
           </a>
         </p>
       ) : null}
+
+      <div className="ext-actions">
+        <button type="button" onClick={() => toggle.mutate(disabled)} disabled={toggle.isPending}>
+          {disabled ? "Enable" : "Disable"}
+        </button>
+        <button
+          type="button"
+          className="danger"
+          onClick={() => uninstall.mutate()}
+          disabled={uninstall.isPending}
+        >
+          {uninstall.isPending ? "Removing…" : "Uninstall"}
+        </button>
+      </div>
+      {toggle.isSuccess || uninstall.isSuccess ? <RestartNotice /> : null}
+      {uninstall.data && !uninstall.data.ok ? (
+        <div className="notice error">{uninstall.data.error}</div>
+      ) : null}
+
       {detail.data?.status === "failed" ? (
         <div className="notice error">Failed to load: {detail.data.error}</div>
       ) : null}
@@ -107,9 +258,7 @@ function ConfigPanel({ name }: { name: string }) {
           client&rsquo;s own settings.
         </div>
       ) : null}
-      {saved ? (
-        <div className="notice">Saved. Restart the server for this to take effect.</div>
-      ) : null}
+      {saved ? <RestartNotice /> : null}
       {schema ? (
         <SchemaForm
           schema={schema}
@@ -127,6 +276,7 @@ function ConfigPanel({ name }: { name: string }) {
 }
 
 export function ExtensionsView() {
+  const queryClient = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
 
   const installed = useQuery({ queryKey: ["extensions"], queryFn: api.extensions });
@@ -138,9 +288,11 @@ export function ExtensionsView() {
   const extensions = installed.data?.extensions ?? [];
   const installedNames = new Set(extensions.map((e) => e.name));
   const available = (catalog.data?.entries ?? []).filter((e) => !installedNames.has(e.name));
+  const current = extensions.find((e) => e.name === selected);
 
   return (
     <div className="extensions">
+      <AppsPanel />
       <h2>Installed</h2>
       {extensions.length === 0 ? (
         <div className="notice">Nothing installed yet.</div>
@@ -157,22 +309,27 @@ export function ExtensionsView() {
         </div>
       )}
 
-      {selected ? <ConfigPanel name={selected} /> : null}
+      {current ? <ConfigPanel name={current.name} status={current.status} /> : null}
 
       {available.length > 0 ? (
         <>
           <h2>Available</h2>
-          <p className="notice">
-            Installing from the dashboard is not wired up yet — install the package, then restart
-            the server and it appears above.
-          </p>
           <div className="grid">
             {available.map((e) => (
-              <AvailableCard key={e.name} entry={e} />
+              <AvailableCard
+                key={e.name}
+                entry={e}
+                onInstalled={() => {
+                  void queryClient.invalidateQueries({ queryKey: ["extensions"] });
+                }}
+              />
             ))}
           </div>
         </>
       ) : null}
+
+      <EnvironmentPanel />
+      <ManagerSettings />
     </div>
   );
 }

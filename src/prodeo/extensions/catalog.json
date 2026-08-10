@@ -8,8 +8,12 @@
     "publisher": "Prodeo",
     "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-adapter-claude-code",
     "license": "Apache-2.0",
-    "categories": ["adapter"],
-    "package": "prodeo-adapter-claude-code"
+    "categories": [
+      "adapter"
+    ],
+    "package": "prodeo-adapter-claude-code",
+    "tier": "bundled",
+    "tier_note": "Ships with Command Center; installed by `uv sync --all-groups`."
   },
   {
     "name": "aider",
@@ -20,8 +24,12 @@
     "publisher": "Prodeo",
     "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-adapter-aider",
     "license": "Apache-2.0",
-    "categories": ["adapter"],
-    "package": "prodeo-adapter-aider"
+    "categories": [
+      "adapter"
+    ],
+    "package": "prodeo-adapter-aider",
+    "tier": "bundled",
+    "tier_note": "Ships with Command Center; installed by `uv sync --all-groups`."
   },
   {
     "name": "codex",
@@ -32,8 +40,12 @@
     "publisher": "Prodeo",
     "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-adapter-codex",
     "license": "Apache-2.0",
-    "categories": ["adapter"],
-    "package": "prodeo-adapter-codex"
+    "categories": [
+      "adapter"
+    ],
+    "package": "prodeo-adapter-codex",
+    "tier": "bundled",
+    "tier_note": "Ships with Command Center; installed by `uv sync --all-groups`."
   },
   {
     "name": "ollama",
@@ -44,8 +56,13 @@
     "publisher": "Prodeo",
     "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-summarizer-ollama",
     "license": "Apache-2.0",
-    "categories": ["summarizer", "local-llm"],
-    "package": "prodeo-summarizer-ollama"
+    "categories": [
+      "summarizer",
+      "local-llm"
+    ],
+    "package": "prodeo-summarizer-ollama",
+    "tier": "bundled",
+    "tier_note": "Ships with Command Center; installed by `uv sync --all-groups`."
   },
   {
     "name": "mjolnir",
@@ -56,8 +73,13 @@
     "publisher": "Prodeo",
     "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-mjolnir",
     "license": "Apache-2.0",
-    "categories": ["voice", "client"],
-    "package": "prodeo-mjolnir[audio]"
+    "categories": [
+      "voice",
+      "client"
+    ],
+    "package": "prodeo-mjolnir[audio]",
+    "tier": "paid",
+    "tier_note": "Mjolnir is a paid extension. Add your licence key under Model storage settings to install it."
   },
   {
     "name": "openwakeword",
@@ -68,8 +90,12 @@
     "publisher": "Prodeo",
     "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-wakeword-openwakeword",
     "license": "Apache-2.0",
-    "categories": ["voice"],
-    "package": "prodeo-wakeword-openwakeword"
+    "categories": [
+      "voice"
+    ],
+    "package": "prodeo-wakeword-openwakeword",
+    "tier": "bundled",
+    "tier_note": "Ships with Command Center; installed by `uv sync --all-groups`."
   },
   {
     "name": "faster-whisper",
@@ -80,20 +106,42 @@
     "publisher": "Prodeo",
     "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-stt-fasterwhisper",
     "license": "Apache-2.0",
-    "categories": ["voice", "gpu-optional"],
-    "package": "prodeo-stt-fasterwhisper"
+    "categories": [
+      "voice",
+      "gpu-optional"
+    ],
+    "package": "prodeo-stt-fasterwhisper",
+    "tier": "bundled",
+    "tier_note": "Ships with Command Center; installed by `uv sync --all-groups`.",
+    "requires": {
+      "note": "Runs on CPU anywhere. Uses the GPU only when CUDA 12 and cuDNN 9 are installed machine-wide."
+    },
+    "config_defaults": {
+      "download_root": "{models_dir}/whisper"
+    }
   },
   {
     "name": "parakeet",
     "extension_class": "plugin",
     "kind": "stt",
-    "version": "0.1.0",
-    "description": "Higher-accuracy GPU speech-to-text via NVIDIA NeMo. Multi-GB dependency chain - install only where the GPU lives.",
+    "version": "0.2.0",
+    "description": "NVIDIA Parakeet speech-to-text via ONNX Runtime. Higher accuracy than the default; runs on CPU, faster on GPU.",
     "publisher": "Prodeo",
     "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-stt-parakeet",
     "license": "Apache-2.0",
-    "categories": ["voice", "gpu-required", "large-download"],
-    "package": "prodeo-stt-parakeet"
+    "categories": [
+      "voice",
+      "large-download"
+    ],
+    "package": "prodeo-stt-parakeet",
+    "tier": "bundled",
+    "tier_note": "Ships with Command Center; installed by `uv sync --all-groups`.",
+    "requires": {
+      "note": "Downloads a ~600MB model on first use. Runs on CPU; for GPU install onnxruntime-gpu (CUDA) or onnxruntime-directml and set the `providers` config key."
+    },
+    "config_defaults": {
+      "download_root": "{models_dir}/parakeet"
+    }
   },
   {
     "name": "piper",
@@ -104,7 +152,33 @@
     "publisher": "Prodeo",
     "homepage": "https://github.com/bmays87/CommandCenter/tree/main/packages/prodeo-tts-piper",
     "license": "GPL-3.0",
-    "categories": ["voice"],
-    "package": "prodeo-tts-piper"
+    "categories": [
+      "voice"
+    ],
+    "package": "prodeo-tts-piper",
+    "tier": "bundled",
+    "tier_note": "Ships with Command Center; installed by `uv sync --all-groups`.",
+    "assets": [
+      {
+        "id": "voice",
+        "label": "Piper voice - en_GB-alan-medium",
+        "approx_mb": 63,
+        "command": [
+          "{python}",
+          "-m",
+          "piper.download_voices",
+          "en_GB-alan-medium",
+          "--data-dir",
+          "{models_dir}/piper-voices"
+        ],
+        "into": "{models_dir}/piper-voices",
+        "produces": [
+          "{models_dir}/piper-voices/en_GB-alan-medium.onnx",
+          "{models_dir}/piper-voices/en_GB-alan-medium.onnx.json"
+        ],
+        "config_app": "mjolnir",
+        "config_pointer": "engines.piper.voice_path"
+      }
+    ]
   }
 ]

@@ -19,10 +19,11 @@ uv run prodeo-server --dev      # start the server with hot reload
 cd dashboard && npm ci && npm run dev   # dashboard against the dev server
 ```
 
-Use `--all-groups`, not `--all-packages`: the latter installs every workspace
-member matched by the `packages/*` glob, including `prodeo-stt-parakeet` and its
-multi-GB `nemo-toolkit[asr]` → torch chain. That package is deliberately outside
-the `dev` group — install it only on the GPU box that needs it.
+`--all-groups` installs every workspace package plus the dev tooling, and is
+what CI runs. (`--all-packages` also works now that no member drags in a heavy
+stack — until 2026-08-09 it pulled `prodeo-stt-parakeet`'s multi-GB NeMo/torch
+chain, which is why older docs warn against it. Parakeet moved to ONNX Runtime
+and joined the dev group.)
 
 `uv sync` is *exact*: it makes `.venv` match `uv.lock` plus the selected groups
 and **removes anything else it finds**, including packages you installed by hand
@@ -49,4 +50,7 @@ compound launch config that starts server + dashboard together.
 | Unit tests | `uv run pytest -m "not integration"` |
 | Full suite | `uv run pytest` |
 | Regenerate API types for dashboard | `uv run scripts/gen_api_types.py` |
-| Run in Docker | `docker compose -f docker/compose.yaml up` |
+
+Run the server directly on the machine you want supervised — the adapters
+discover sessions from host-local paths, so a container cannot see them without
+mounting away its own isolation. See `docker/README.md`.

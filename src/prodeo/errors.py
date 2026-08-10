@@ -47,6 +47,18 @@ class UnknownExtensionError(ProdeoError):
     """An operation referenced an extension that is not installed."""
 
 
+class NotEntitledError(ProdeoError):
+    """A paid extension was requested without an entitlement (ADR-0015)."""
+
+
+class RequirementsNotMetError(ProdeoError):
+    """An extension declares requirements this machine does not satisfy."""
+
+
+class UnknownAppError(ProdeoError):
+    """An operation referenced an app extension that is not installed."""
+
+
 class InteractionAlreadyResolvedError(ProdeoError):
     """An interaction was answered after it had already been resolved.
 

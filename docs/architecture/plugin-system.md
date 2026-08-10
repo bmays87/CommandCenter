@@ -29,7 +29,7 @@ See `docs/development/plugin-packaging.md` for the author-facing how-to.
 | `adapter` | `AgentAdapter` | — (claude-code, aider, codex ship separately) |
 | `notifier` | `NotificationChannel` | log channel (ntfy + desktop built in) |
 | `summarizer` | `Summarizer` | — (optional; `prodeo-summarizer-ollama` reference) |
-| `stt` | `SpeechToText` | — (`prodeo-stt-fasterwhisper` reference; `-parakeet` for GPUs) |
+| `stt` | `SpeechToText` | — (`prodeo-stt-fasterwhisper` reference; `-parakeet` for accuracy) |
 | `tts` | `TextToSpeech` | — (`prodeo-tts-piper` reference) |
 | `wakeword` | `WakeWordDetector` | — (`prodeo-wakeword-openwakeword` reference) |
 | `eventstore` | `EventStore` | SQLite (see ADR-0003; contract suite is the gate) |

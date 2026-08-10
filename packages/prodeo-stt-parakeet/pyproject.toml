@@ -1,14 +1,16 @@
 [project]
 name = "prodeo-stt-parakeet"
-version = "0.1.0"
-description = "Mjölnir speech-to-text engine backed by NVIDIA Parakeet (GPU, NeMo)"
+version = "0.2.0"
+description = "Mjölnir speech-to-text engine backed by NVIDIA Parakeet (ONNX Runtime)"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.12"
-# The NeMo chain is deliberately brutal (multi-GB, CUDA-bound); that is why
-# STT engines are separate plugin packages. This one is NOT part of the
-# workspace dev group - install it only where the GPU lives.
-dependencies = ["prodeo-mjolnir", "nemo-toolkit[asr]>=2.0"]
+# Same model NVIDIA ships through NeMo, run on ONNX Runtime instead: numpy +
+# onnxruntime rather than the PyTorch stack, so this is an ordinary light
+# package. onnxruntime is already here for faster-whisper, Piper, and
+# OpenWakeWord. For GPU, swap in onnxruntime-gpu (CUDA) or
+# onnxruntime-directml and set the `providers` config key.
+dependencies = ["prodeo-mjolnir", "onnx-asr[cpu,hub]>=0.12"]
 
 [project.entry-points."prodeo.plugins"]
 parakeet = "prodeo_stt_parakeet:manifest"

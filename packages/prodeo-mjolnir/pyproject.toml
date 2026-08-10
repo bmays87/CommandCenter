@@ -26,6 +26,11 @@ audio = ["sounddevice>=0.4.6"]
 [project.scripts]
 prodeo-mjolnir = "prodeo_mjolnir.main:main"
 
+# App-class extension (ADR-0014): a separate process the server can install,
+# configure, and supervise - not an in-process plugin.
+[project.entry-points."prodeo.apps"]
+mjolnir = "prodeo_mjolnir.app:manifest"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

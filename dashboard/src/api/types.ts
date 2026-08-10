@@ -13,6 +13,13 @@ export type ExtensionDetail = components["schemas"]["ExtensionDetail"];
 export type ExtensionConfig = components["schemas"]["ExtensionConfig"];
 export type CatalogEntry = components["schemas"]["CatalogEntry"];
 export type Catalog = components["schemas"]["Catalog"];
+export type InstallResult = components["schemas"]["InstallResult"];
+export type ExtensionSettings = components["schemas"]["ExtensionSettings"];
+export type AppStatus = components["schemas"]["AppStatus"];
+export type AssetStatus = components["schemas"]["AssetStatus"];
+export type AssetResult = components["schemas"]["AssetResult"];
+export type EnvironmentCheck = components["schemas"]["EnvironmentCheck"];
+export type EnvironmentReport = components["schemas"]["EnvironmentReport"];
 
 export const ACTIVE_STATES: readonly string[] = [
   "running",

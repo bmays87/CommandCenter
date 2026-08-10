@@ -265,6 +265,24 @@ async def test_inventory_records_every_outcome(bus: InProcessEventBus) -> None:
 
 
 @pytest.mark.asyncio
+async def test_disabled_plugins_are_inventoried_but_not_loaded(bus: InProcessEventBus) -> None:
+    sub = bus.subscribe("system.*", name="probe")
+    host = _host(bus, [FakeEntryPoint("ok", _adapter_manifest())])
+    host.apply_disabled({"minimal"})
+
+    loaded = await host.load()
+
+    assert loaded.adapters == []  # turned off, so never instantiated
+    (info,) = host.inventory()
+    # "Installed but off" is a state the manager must show - not a reason to
+    # pretend the package isn't there.
+    assert info.status == "disabled"
+    assert info.manifest is not None and info.manifest.name == "minimal"
+    events = await _drain(sub)
+    assert events == []  # disabling is not a load and not a failure
+
+
+@pytest.mark.asyncio
 async def test_inventory_exposes_config_schema(bus: InProcessEventBus) -> None:
     manifest = PluginManifest(
         name="echo", kind="notifier", version="1.0", config_model=EchoConfig, factory=EchoChannel

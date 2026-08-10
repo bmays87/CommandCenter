@@ -48,16 +48,16 @@ not stack:
 | Text-to-speech | `piper` | `MJOLNIR_TTS_PLUGIN` | `piper` |
 | Persona rephraser | `ollama` *(on by default; ADR-0013)* | `MJOLNIR_PERSONA_REPHRASER` | `ollama` |
 
-`parakeet` is a heavier GPU alternative to `faster-whisper`; you would run one
-*or* the other, never both. Per-engine settings go in `MJOLNIR_ENGINES` (JSON).
+`parakeet` is the higher-accuracy alternative to `faster-whisper`; both run on
+CPU and both go faster on a GPU. You run one *or* the other, never both.
+Per-engine settings go in `MJOLNIR_ENGINES` (JSON).
 
 ## Bringing it up locally
 
 ```bash
 # 0. One-time: install the workspace (server + all in-repo packages)
-#    Note: --all-groups, never --all-packages (the latter drags in the
-#    parakeet/NeMo/torch chain). uv sync is exact — it deletes anything in
-#    .venv that the lock doesn't call for, hand-installed packages included.
+#    uv sync is exact — it deletes anything in .venv that the lock doesn't
+#    call for, hand-installed packages included.
 uv sync --all-groups
 
 # 1. Start Mjölnir's brain (its default LLM personality). GPU is used

@@ -14,6 +14,12 @@ class EngineNotFoundError(MjolnirError):
             f"no {kind} engine named {name!r} is installed (installed {kind} engines: "
             f"{available}); install the plugin package or change the setting"
         )
+        # Kept as attributes, not just interpolated into the message: a setup
+        # UI needs to offer "here are the engines you do have" without parsing
+        # prose back out of a string.
+        self.kind = kind
+        self.name = name
+        self.installed = sorted(installed)
 
 
 class AlreadyResolvedError(MjolnirError):

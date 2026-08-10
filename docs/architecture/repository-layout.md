@@ -43,15 +43,14 @@ command-center/
 │   ├── prodeo-wakeword-openwakeword/  # voice engines: plugin kinds
 │   ├── prodeo-stt-fasterwhisper/      #   wakeword / stt / tts, hosted by
 │   ├── prodeo-tts-piper/              #   the mjolnir process
-│   ├── prodeo-stt-parakeet/     # GPU STT; not in the dev group (NeMo is multi-GB)
+│   ├── prodeo-stt-parakeet/     #   higher-accuracy STT via ONNX Runtime
 │   └── prodeo-storage-mongodb/  # optional backend (deferred)
 ├── dashboard/                   # React + TypeScript client
 ├── tests/                       # cross-package integration tests
 │   ├── integration/
 │   └── fixtures/                # incl. recorded agent transcripts
 ├── docker/
-│   ├── Dockerfile
-│   └── compose.yaml
+│   └── Dockerfile               # server-only image; see docker/README.md
 ├── examples/
 │   └── adapter-skeleton/        # copyable adapter starting point (workspace member)
 └── scripts/                     # dev-env bootstrap, release, codegen

@@ -86,9 +86,10 @@ class PluginManifest(BaseModel):
 
 
 #: Why a discovered entry point is not contributing to this process.
-#: ``hosted_by_client`` is not a failure: voice engines are loaded by the
-#: mjolnir process, and the extensions manager must show them as installed.
-ExtensionStatus = Literal["loaded", "failed", "hosted_by_client"]
+#: Only ``failed`` is a problem: ``hosted_by_client`` means the mjolnir process
+#: loads it, and ``disabled`` means the user turned it off. Both are still
+#: installed, and the extensions manager must show them.
+ExtensionStatus = Literal["loaded", "failed", "hosted_by_client", "disabled"]
 
 
 @dataclass(frozen=True)
@@ -195,6 +196,7 @@ class PluginHost:
         self._entry_points = entry_points_fn
         self._inventory: list[ExtensionInfo] = []
         self._saved_config: dict[str, dict[str, Any]] = {}
+        self._disabled: set[str] = set()
 
     def apply_saved_config(self, saved: dict[str, dict[str, Any]]) -> None:
         """Overlay the extensions manager's persisted config, by plugin name.
@@ -204,6 +206,15 @@ class PluginHost:
         instantiation time.
         """
         self._saved_config = {k: dict(v) for k, v in saved.items()}
+
+    def apply_disabled(self, disabled: Iterable[str]) -> None:
+        """Names the user turned off; they are discovered but never loaded.
+
+        Call before :meth:`load`. A disabled plugin still appears in the
+        inventory - "installed but off" is a state the manager must show, not
+        a reason to pretend the package isn't there.
+        """
+        self._disabled = set(disabled)
 
     def inventory(self) -> list[ExtensionInfo]:
         """What :meth:`load` discovered, for the extensions manager.
@@ -221,6 +232,10 @@ class PluginHost:
         for ep in self._entry_points():
             try:
                 manifest = resolve_manifest(ep)
+                if manifest.name in self._disabled:
+                    _log.info("plugins.skipped_disabled", plugin=manifest.name)
+                    self._inventory.append(ExtensionInfo(ep.name, "disabled", manifest=manifest))
+                    continue
                 if manifest.kind in VOICE_KINDS:
                     # Voice engines belong to the mjolnir client process; a
                     # co-installed engine is not an error, just not ours.

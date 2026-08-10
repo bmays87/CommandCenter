@@ -95,6 +95,15 @@ class Settings(BaseSettings):
         return self.data_dir / "events.db"
 
     @property
+    def default_models_dir(self) -> Path:
+        """Where bulk model data goes unless the user picks somewhere else.
+
+        Under ``data_dir`` rather than each library's own home-directory cache,
+        so one setting governs it and the system drive is never assumed.
+        """
+        return self.data_dir / "models"
+
+    @property
     def extension_config_path(self) -> Path:
         """Where the extensions manager persists per-plugin config overlays.
 

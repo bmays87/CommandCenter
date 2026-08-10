@@ -1,8 +1,8 @@
 """EventBus interface.
 
 The in-process implementation is the only one in v1; the interface exists so a
-broker-backed implementation can be introduced in Phase 5 without touching
-services (ADR-0002).
+broker-backed implementation can be introduced in the Many Machines phase
+without touching services (ADR-0002).
 """
 
 from collections.abc import AsyncIterator

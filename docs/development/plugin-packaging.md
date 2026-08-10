@@ -107,6 +107,34 @@ All fields default to empty, so omitting them is valid and `plugin_api_version`
 stays 1. `license` is worth getting right — a GPL dependency is something a user
 should learn from the extensions list, not from a lawyer.
 
+## Declaring requirements
+
+Catalog entries carry a `requires` block that the server checks against the host
+*before* installing, so a user is not told "no GPU" by a failed multi-gigabyte
+download:
+
+```json
+"requires": {
+  "gpu": true,
+  "min_python": "3.12",
+  "platforms": ["win32", "linux"],
+  "note": "Needs an NVIDIA GPU plus a machine-wide CUDA runtime."
+}
+```
+
+An unmet requirement makes the install a **412 Precondition Failed** and the
+dashboard disables the button with the reason. `note` is for what a checkbox
+cannot express — Parakeet's GPU flag says it needs a device; the note says it
+also needs CUDA installed separately.
+
+**Pin what you actually need, and prefer the lighter runtime.** A dependency
+whose own bounds are loose can let a resolver pick something ancient and
+unbuildable — Parakeet's NeMo chain reached numba only through librosa's
+`numba>=0.51` and a fresh resolve landed on a 2021 release that refuses modern
+Python. The fix was not a tighter pin but a different runtime: the same model
+on ONNX Runtime went from ~148 packages to one, and became CPU-capable in the
+process. Weigh that before adopting a framework to reach a model.
+
 ## Config precedence
 
 Two layers reach your factory (ADR-0014): the environment

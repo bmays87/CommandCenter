@@ -38,6 +38,7 @@ dev = [
     "prodeo-mjolnir[audio]",
     "prodeo-wakeword-openwakeword",
     "prodeo-stt-fasterwhisper",
+    "prodeo-stt-parakeet",
     "prodeo-tts-piper",
 ]
 
@@ -53,6 +54,7 @@ prodeo-adapter-codex = { workspace = true }
 prodeo-mjolnir = { workspace = true }
 prodeo-wakeword-openwakeword = { workspace = true }
 prodeo-stt-fasterwhisper = { workspace = true }
+prodeo-stt-parakeet = { workspace = true }
 prodeo-tts-piper = { workspace = true }
 
 [build-system]
@@ -102,8 +104,8 @@ packages = [
     "prodeo_stt_parakeet",
 ]
 
-# Voice engine libraries ship no type stubs (and Parakeet's NeMo/sounddevice
-# are not installed in CI at all); their imports are lazy and wrapped.
+# Voice engine libraries ship no type stubs (and sounddevice is not installed
+# in CI at all); their imports are lazy and wrapped.
 [[tool.mypy.overrides]]
 module = [
     "faster_whisper.*",
@@ -111,7 +113,7 @@ module = [
     "openwakeword.*",
     "piper.*",
     "onnxruntime.*",
-    "nemo.*",
+    "onnx_asr.*",
     "sounddevice",
 ]
 ignore_missing_imports = true

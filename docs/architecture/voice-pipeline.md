@@ -7,7 +7,7 @@ same WebSocket + REST API as the dashboard.
 
 *Shipped (phase 4).* `packages/prodeo-mjolnir` plus the engine plugins
 (`prodeo-wakeword-openwakeword`, `prodeo-stt-fasterwhisper`,
-`prodeo-tts-piper`, and `prodeo-stt-parakeet` for GPU boxes). Engines are
+`prodeo-tts-piper`, and `prodeo-stt-parakeet`). Engines are
 plugins in the shared `prodeo.plugins` group, hosted by the mjolnir process
 (ADR-0010). Deployment runbook: `docs/deployment/satellite-pi.md`.
 
@@ -22,7 +22,8 @@ speaker ◄── TextToSpeech ◄── Response Composer ◄── event strea
 Reference engines (all local, all replaceable behind interfaces):
 
 - **Wake word**: OpenWakeWord
-- **STT**: NVIDIA Parakeet (GPU) or faster-whisper (CPU fallback) — see note below
+- **STT**: faster-whisper (default) or NVIDIA Parakeet — both CPU-capable, both
+  faster on a GPU; see note below
 - **TTS**: Piper
 - **Summaries** (optional): Ollama via the `summarizer` plugin
 
@@ -38,10 +39,16 @@ default.
 
 ### Note on Parakeet
 
-Parakeet's NeMo dependency chain is heavy (multi-GB, CUDA-bound) and must never be
-pulled in by the core install. STT engines are plugins precisely so
-`prodeo-stt-parakeet` can have brutal dependencies while `prodeo-stt-fasterwhisper`
-stays lightweight. The voice client works CPU-only out of the box.
+Parakeet used to be the argument for engine isolation: its NeMo chain pulled
+PyTorch and ~148 packages, so it had to stay out of any default install. Since
+`prodeo-stt-parakeet` 0.2.0 it runs the same weights through ONNX Runtime
+(`onnx-asr`) — one package, CPU-capable, and in the workspace dev group like
+every other engine.
+
+The isolation rule still holds; it is simply no longer *this* package that
+tests it. A future engine with a heavy stack (XTTS-class TTS, say) is exactly
+why STT and TTS are separate plugin packages. The voice client works CPU-only
+out of the box.
 
 **GPU is automatic.** The default engines detect CUDA themselves and use it when
 present, with no user toggle: faster-whisper picks `cuda`/`float16` when
