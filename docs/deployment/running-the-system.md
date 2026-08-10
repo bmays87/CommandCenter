@@ -5,7 +5,7 @@ page is the mental model for how the pieces run.
 
 ## Two processes, not a dozen
 
-Everything in `packages/` is one of two things: a **process you launch**, or an
+Everything in `packages/` is one of two things: a **process** or an
 **in-process plugin** that loads automatically once installed. There are only
 **two long-running processes** in a full setup (plus one optional external
 daemon):
@@ -22,6 +22,23 @@ So the agent-watching packages live in the **server**, and the voice packages
 live in **Mjölnir** — two separate processes, possibly on separate machines
 (e.g. a Raspberry Pi satellite; see [satellite-pi.md](satellite-pi.md)).
 
+### You no longer have to start Mjölnir yourself
+
+Since Phase 5 the server can supervise it for you (ADR-0015). Mjölnir declares
+an `AppManifest` in the `prodeo.apps` entry-point group, and the dashboard's
+Extensions page can start, stop, and restart it, with crash-restart backoff
+while it is meant to be running. Autostart-with-the-server is a toggle,
+**off by default** — a process that listens to a microphone should not start
+itself uninvited.
+
+Running it by hand still works and is still the right thing on a satellite,
+where the server is on another machine entirely (systemd handles it there).
+
+**Audio is the catch.** A supervised child inherits the server's session, so
+voice only works when the server runs in the desktop session you want it to
+listen in. As a Windows service it will have no microphone. That is a real
+limit of server-launched voice, not something to work around.
+
 ## Plugins are in-process and auto-discovered
 
 The engine and adapter packages are **not** processes and are **not** started
@@ -34,6 +51,12 @@ required — see [plugin-system.md](../architecture/plugin-system.md).
   deliberately *skips* voice kinds if they happen to be installed alongside it.
 - **Mjölnir** hosts the voice kinds (`wakeword` / `stt` / `tts`) and can also
   use a `summarizer` for persona rephrasing.
+
+Installing no longer has to be a shell step either: the Extensions page installs
+from a curated catalog into `<PRODEO_DATA_DIR>/extensions/lib`, which sits
+outside `.venv` so `uv sync` cannot delete it. Plugins still need a **server
+restart** to load — the host reads entry points once at boot — whereas apps
+start and stop live.
 
 ## "More packages" ≠ "better Mjölnir"
 

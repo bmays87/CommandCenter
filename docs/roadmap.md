@@ -79,14 +79,9 @@ env vars, manual model downloads, and manual CUDA-runtime installs.
   (models, runtimes, extension payloads) must prompt for a target
   path/drive — never silently assume the system drive.** (The
   `start-mjolnir.ps1 -ModelsPath` flag is the interim CLI form of this.)
-  *In progress (ADR-0014):* browse and configure have shipped — `/api/extensions`
-  exposes the host's inventory (including entry points the server does not host),
-  config persists to `<PRODEO_DATA_DIR>/extensions.json` as a per-key overlay on
-  the environment layer, and the dashboard renders settings forms from each
-  plugin's JSON Schema. Extensions are modelled in two classes — in-process
-  `plugin` and out-of-process `app` (Mjölnir) — so the app path is not forced
-  into a plugin kind. Still to come: install/uninstall, enable/disable, and the
-  process supervisor an `app` needs.
+  Extensions are modelled in two classes — in-process `plugin` and
+  out-of-process `app` (Mjölnir) — so the app path is not forced into a plugin
+  kind (ADR-0014, ADR-0015).
 - **Guided voice-client setup**: install Mjölnir and its engine plugins,
   download the STT/TTS and wake-word models, write the config, and
   launch/register the client from the web UI — replacing the manual env vars
@@ -99,6 +94,26 @@ env vars, manual model downloads, and manual CUDA-runtime installs.
 **Exit:** a new user installs the dashboard, adds the Claude Code adapter and
 the voice client, and approves a permission by voice — without opening a
 terminal.
+*Shipped* with deliberate deviations: installs are **catalog-gated** — the API
+takes a sanctioned name, never a caller-supplied package spec, so it cannot
+fetch arbitrary code (ADR-0015), and every state-changing endpoint is refused
+when `PRODEO_API_TOKEN` is unset. First-party packages are unpublished and
+depend on each other, so the server builds the workspace into a local wheel
+index and installs with `--find-links`; extensions land in
+`<PRODEO_DATA_DIR>/extensions/lib`, outside `.venv` where `uv sync` cannot
+delete them. Mjölnir is an **app-class extension on a `paid` tier** — the
+entitlement check is presence of a licence key and is explicitly a placeholder,
+not a security control. The supervisor treats a clean child exit as
+non-terminal and gives up after five consecutive crash-loops. Model assets are
+catalog data verified by the files they *produce*, which is what catches a
+Piper voice downloaded without its `.onnx.json` sibling — the failure that
+starts the client mute. `prodeo-stt-parakeet` moved from NeMo to ONNX Runtime
+(148 packages to 1) and joined the dev group, which also removed the last
+thing pulling PyTorch into the workspace. Environment provisioning reports
+GPU/CUDA/audio/Ollama with fix actions rather than one-click installers, and
+**DirectML via Parakeet is the documented GPU route** — no CUDA toolkit at
+all; CUDA remains necessary only for faster-whisper, which has no other GPU
+path.
 
 ## Phase 6 — Many Machines
 `EventBus` implementation over NATS (or Redis Streams — ADR at the time); node

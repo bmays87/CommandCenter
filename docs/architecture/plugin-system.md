@@ -92,9 +92,16 @@ subprocess/WASM sandbox is explicitly out of scope until real demand exists
 (see ADR-0005). What we do enforce now: plugins receive a scoped context object, not
 the service container, so casual misuse of internals is at least inconvenient.
 
-The extensions manager does not change this posture: it browses and configures,
-and nothing in it runs an installer. The one write it does allow —
-`PUT /api/extensions/{name}/config` — is refused when `PRODEO_API_TOKEN` is
-unset, because saved values become plugin constructor arguments and an open
-server should not offer that. When installation does land, signing and publisher
-identity land with it, not after.
+**Installation now exists** (ADR-0015), so the posture has moved — deliberately,
+and with bounds. `POST /api/extensions/{name}/install` resolves a name from the
+sanctioned catalog to a package spec; the caller never supplies a spec, so it
+cannot fetch arbitrary code, and an unknown name is a 404. Every state-changing
+endpoint — install, uninstall, enable/disable, config, and app start/stop — is
+refused when `PRODEO_API_TOKEN` is unset, because these execute code or become
+plugin constructor arguments and an open server must not offer them. Reads stay
+open.
+
+What has *not* changed: there is still no sandbox, and installing an extension
+is still running code. The blast radius is bounded by the catalog and the token,
+nothing more. Signing and publisher identity remain owed, and belong with a
+third-party index rather than after it.

@@ -83,6 +83,9 @@ Three facts shaped the design:
 - Installation is still `uv pip install` plus a restart. Nothing here executes
   an installer, so this milestone adds **no new code-execution surface** beyond
   the config write above.
+  *Superseded by ADR-0015 (2026-08-10):* installation, app supervision, and the
+  paid tier all landed. The code-execution surface now exists, bounded by a
+  catalog allowlist and the API token.
 - The subprocess-isolation question ADR-0005 deferred is *still* deferred, but
   it is now concrete rather than speculative: it belongs with the app class and
   the process supervisor, alongside signing and publisher identity.
