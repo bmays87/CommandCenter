@@ -18,7 +18,10 @@ if TYPE_CHECKING:
 #: Bumped when the adapter contract changes incompatibly. Adapters declare
 #: the version they were built against; the manager refuses mismatches.
 #: v2 (Phase 2): ``respond()`` joined the control surface.
-ADAPTER_API_VERSION: Final = 2
+#: v3: ``set_model()`` joined the control surface.
+#: v4: ``set_permission_mode()`` joined the control surface.
+#: v5: ``interrupt()`` and ``context_usage()`` joined the control surface.
+ADAPTER_API_VERSION: Final = 5
 
 
 class AdapterMetadata(BaseModel):
@@ -36,6 +39,12 @@ class AdapterCapabilities(BaseModel):
     respond_to_permissions: bool = False
     answer_questions: bool = False
     send_prompts: bool = False
+    set_model: bool = False
+    set_permission_mode: bool = False
+    #: Can stop the current turn without ending the session.
+    interrupt: bool = False
+    #: Can report context-window usage for a live session.
+    report_context: bool = False
     historical_sessions: bool = False
 
 
@@ -97,6 +106,22 @@ class AgentAdapter(Protocol):
 
     async def send_prompt(self, session: SessionRef, prompt: str) -> None: ...
 
+    async def set_model(self, session: SessionRef, model: str) -> None:
+        """Switch the session's model (empty ``model`` = the agent's default)."""
+        ...
+
+    async def set_permission_mode(self, session: SessionRef, mode: str) -> None:
+        """Switch how the session handles permissions (adapter-native mode)."""
+        ...
+
+    async def interrupt(self, session: SessionRef) -> None:
+        """Stop the current turn but keep the session alive for more input."""
+        ...
+
+    async def context_usage(self, session: SessionRef) -> dict[str, Any]:
+        """Context-window usage for a live session (adapter-native shape)."""
+        ...
+
 
 class ObserveOnlyAdapter:
     """Convenience base for adapters without control capabilities.
@@ -117,3 +142,15 @@ class ObserveOnlyAdapter:
 
     async def send_prompt(self, session: SessionRef, prompt: str) -> None:
         raise CapabilityNotSupportedError("send_prompt")
+
+    async def set_model(self, session: SessionRef, model: str) -> None:
+        raise CapabilityNotSupportedError("set_model")
+
+    async def set_permission_mode(self, session: SessionRef, mode: str) -> None:
+        raise CapabilityNotSupportedError("set_permission_mode")
+
+    async def interrupt(self, session: SessionRef) -> None:
+        raise CapabilityNotSupportedError("interrupt")
+
+    async def context_usage(self, session: SessionRef) -> dict[str, Any]:
+        raise CapabilityNotSupportedError("context_usage")

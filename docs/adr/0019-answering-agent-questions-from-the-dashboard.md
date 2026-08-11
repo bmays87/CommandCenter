@@ -100,6 +100,27 @@ question tool through the permission path), not a blocker for the feature.
 - Free-text answers to a question remain legal and unvalidated in core;
   only the adapter decides whether text names an option.
 
+## Addendum (2026-08-10): permission mode and session cleanup
+
+Two adjacent controls landed with the same "work from Command Center" goal:
+
+- **Live permission mode.** `set_permission_mode` joins the control surface
+  (adapter API v4), mirroring `set_model` exactly: capability flag → adapter →
+  launcher → the SDK's `set_permission_mode`. Four modes, human-labelled in the
+  dashboard, adapter-native on the wire — Manual (`default`), Plan (`plan`),
+  Edit Automatically (`acceptEdits`), Auto (`bypassPermissions`). The API
+  validates the mode against that closed set before any adapter sees it. A
+  launch sets the starting mode via `LaunchRequest`; the SessionView picker
+  switches it live on controllable sessions. `Session.permission_mode` is
+  descriptive, refreshed on the control call like `model`.
+
+- **Archive, not delete.** `POST /api/sessions/{id}/archive` transitions a
+  terminal session to `ARCHIVED` — event-sourced (ADR-0002), so it survives a
+  rebuild and the history is never destroyed. Only terminal sessions archive
+  (a running one is 409 "stop it first"). The fleet hides archived sessions;
+  that is the "clean up" the user wanted, without a hard delete fighting the
+  log-as-truth model.
+
 ## Alternatives Considered
 
 - **Structured option objects (label/description/recommended) in core.**

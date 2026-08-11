@@ -20,6 +20,7 @@ export type AssetStatus = components["schemas"]["AssetStatus"];
 export type AssetResult = components["schemas"]["AssetResult"];
 export type EnvironmentCheck = components["schemas"]["EnvironmentCheck"];
 export type EnvironmentReport = components["schemas"]["EnvironmentReport"];
+export type ContextUsage = components["schemas"]["ContextUsage"];
 export type HealthResponse = components["schemas"]["HealthResponse"];
 export type RestartResponse = components["schemas"]["RestartResponse"];
 export type DirectoryEntry = components["schemas"]["DirectoryEntry"];

@@ -460,6 +460,33 @@
         "title": "ClientPresence",
         "type": "object"
       },
+      "ContextUsage": {
+        "description": "Context-window usage for a live session, mapped from the adapter's\n(CLI-owned) shape into a stable, small view for the composer pill.",
+        "properties": {
+          "max_tokens": {
+            "default": 0,
+            "title": "Max Tokens",
+            "type": "integer"
+          },
+          "model": {
+            "default": "",
+            "title": "Model",
+            "type": "string"
+          },
+          "percentage": {
+            "default": 0.0,
+            "title": "Percentage",
+            "type": "number"
+          },
+          "total_tokens": {
+            "default": 0,
+            "title": "Total Tokens",
+            "type": "integer"
+          }
+        },
+        "title": "ContextUsage",
+        "type": "object"
+      },
       "CreateScheduleRequest": {
         "description": "Define a cron-style agent launch (the launch fields mirror LaunchRequest).",
         "properties": {
@@ -1192,7 +1219,7 @@
       "HealthResponse": {
         "properties": {
           "boot_id": {
-            "default": "01KZPW128FFEFS0FBSM1M4KGNN",
+            "default": "01KZQ8GNRA4T7SNRR39QB9608F",
             "title": "Boot Id",
             "type": "string"
           },
@@ -1708,6 +1735,11 @@
             "title": "Native Id",
             "type": "string"
           },
+          "permission_mode": {
+            "default": "",
+            "title": "Permission Mode",
+            "type": "string"
+          },
           "project": {
             "default": "",
             "title": "Project",
@@ -1760,6 +1792,38 @@
         ],
         "title": "SessionState",
         "type": "string"
+      },
+      "SetModelRequest": {
+        "description": "Switch an active session's model (empty = the agent's default).",
+        "properties": {
+          "model": {
+            "default": "",
+            "title": "Model",
+            "type": "string"
+          }
+        },
+        "title": "SetModelRequest",
+        "type": "object"
+      },
+      "SetPermissionModeRequest": {
+        "description": "Switch how an active session handles permissions.",
+        "properties": {
+          "mode": {
+            "enum": [
+              "default",
+              "plan",
+              "acceptEdits",
+              "bypassPermissions"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "SetPermissionModeRequest",
+        "type": "object"
       },
       "ValidationError": {
         "properties": {
@@ -3092,6 +3156,86 @@
         "summary": "Get Session"
       }
     },
+    "/api/sessions/{session_id}/archive": {
+      "post": {
+        "description": "Remove a finished session from the fleet (event-sourced, reversible).\n\nArchiving is a state transition, not a hard delete: the log is the\ndurable record (ADR-0002), so the session leaves the active view but\nits history is intact. Only terminal sessions can be archived \u2014 a\nrunning one must be stopped first (409).",
+        "operationId": "archive_session_api_sessions__session_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Session"
+      }
+    },
+    "/api/sessions/{session_id}/context": {
+      "get": {
+        "description": "Context-window usage for a live session (the composer pill).\n\nThe adapter's shape is CLI-owned, so map it defensively: unknown or\nmissing fields become zeros rather than an error, and the pill hides\nitself when nothing useful comes back.",
+        "operationId": "session_context_api_sessions__session_id__context_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextUsage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Session Context"
+      }
+    },
     "/api/sessions/{session_id}/events": {
       "get": {
         "operationId": "session_events_api_sessions__session_id__events_get",
@@ -3167,6 +3311,146 @@
           }
         },
         "summary": "Session Events"
+      }
+    },
+    "/api/sessions/{session_id}/interrupt": {
+      "post": {
+        "description": "Stop the session's current turn without ending it.\n\nUnlike ``/terminate``, the session stays alive and keeps any queued\nfollow-up prompt \u2014 this is the composer's Stop button.",
+        "operationId": "interrupt_session_api_sessions__session_id__interrupt_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Interrupt Session"
+      }
+    },
+    "/api/sessions/{session_id}/model": {
+      "post": {
+        "description": "Switch the model a controlled session runs on, mid-session.",
+        "operationId": "set_session_model_api_sessions__session_id__model_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetModelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Session Model"
+      }
+    },
+    "/api/sessions/{session_id}/permission-mode": {
+      "post": {
+        "description": "Switch how a controlled session handles permissions, mid-session.\n\nPlan (no execution), Manual (ask each time), Edit Automatically\n(auto-accept edits), or Auto (bypass checks). Applies to the *running*\nagent; a launch sets the starting mode via ``LaunchRequest``.",
+        "operationId": "set_session_permission_mode_api_sessions__session_id__permission_mode_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPermissionModeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Session Permission Mode"
       }
     },
     "/api/sessions/{session_id}/prompt": {

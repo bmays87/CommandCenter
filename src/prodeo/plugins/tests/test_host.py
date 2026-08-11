@@ -7,6 +7,7 @@ import pytest
 from pydantic import BaseModel
 
 from prodeo.adapters.interface import (
+    ADAPTER_API_VERSION,
     AdapterCapabilities,
     AdapterMetadata,
     ObserveOnlyAdapter,
@@ -30,7 +31,7 @@ class FakeEntryPoint:
 
 
 class MinimalAdapter(ObserveOnlyAdapter):
-    def __init__(self, api_version: int = 2) -> None:
+    def __init__(self, api_version: int = ADAPTER_API_VERSION) -> None:
         self.metadata = AdapterMetadata(
             name="minimal", version="1.0", adapter_api_version=api_version
         )

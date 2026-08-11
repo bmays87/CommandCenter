@@ -6,6 +6,8 @@ import { isActive, type Session } from "../api/types";
 import { projectName, timeAgo } from "../format";
 import { useLiveEvents } from "../live";
 import { DirectoryPicker } from "./DirectoryPicker";
+import { ModelInput } from "./ModelInput";
+import { ModePicker, modeLabel } from "./ModePicker";
 
 function StateBadge({ state }: { state: string }) {
   return <span className={`badge state-${state}`}>{state.replace(/_/g, " ")}</span>;
@@ -17,6 +19,8 @@ function NewSessionForm({ onClose }: { onClose: () => void }) {
   const [adapter, setAdapter] = useState("claude-code");
   const [project, setProject] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [model, setModel] = useState("");
+  const [mode, setMode] = useState("default");
   const [browsing, setBrowsing] = useState(false);
   const [error, setError] = useState("");
 
@@ -26,7 +30,8 @@ function NewSessionForm({ onClose }: { onClose: () => void }) {
   const adapters = (extensions.data?.extensions ?? []).filter((e) => e.kind === "adapter");
 
   const launch = useMutation({
-    mutationFn: () => api.launchSession({ adapter, project, prompt, model: "", permission_mode: "" }),
+    mutationFn: () =>
+      api.launchSession({ adapter, project, prompt, model, permission_mode: mode }),
     onSuccess: (session) => {
       void queryClient.invalidateQueries({ queryKey: ["sessions"] });
       onClose();
@@ -68,6 +73,21 @@ function NewSessionForm({ onClose }: { onClose: () => void }) {
             Browse…
           </button>
         </div>
+      </div>
+      <div className="form-row">
+        <label htmlFor="ns-model">Model</label>
+        <ModelInput id="ns-model" value={model} onChange={setModel} />
+        <p className="field-help">
+          Model alias (e.g. sonnet, opus, haiku) or full id; leave empty for the agent&apos;s
+          default.
+        </p>
+      </div>
+      <div className="form-row">
+        <label htmlFor="ns-mode">Permission mode</label>
+        <ModePicker id="ns-mode" value={mode} onChange={setMode} />
+        <p className="field-help">
+          How the agent handles permissions. You can change it live once it&apos;s running.
+        </p>
       </div>
       <div className="form-row">
         <label htmlFor="ns-prompt">Prompt</label>
@@ -119,26 +139,42 @@ function NewSessionForm({ onClose }: { onClose: () => void }) {
   );
 }
 
-function SessionCard({ session }: { session: Session }) {
+function SessionCard({ session, onArchive }: { session: Session; onArchive?: () => void }) {
   const attention = session.state === "waiting_on_user";
   return (
-    <a
+    <div
       className={`card ${isActive(session.state ?? "") ? "card-active" : ""} ${
         attention ? "card-attention" : ""
       }`}
-      href={`#/session/${session.id}`}
     >
-      <div className="card-top">
-        <span className="agent-chip">{session.adapter}</span>
-        <StateBadge state={session.state ?? "discovered"} />
+      <a className="card-link" href={`#/session/${session.id}`}>
+        <div className="card-top">
+          <span className="agent-chip">{session.adapter}</span>
+          <StateBadge state={session.state ?? "discovered"} />
+        </div>
+        <div className="card-title">{session.title || session.native_id}</div>
+        <div className="card-meta">
+          <span className="project">{projectName(session.project ?? "")}</span>
+          {session.model ? <span className="model">{session.model}</span> : null}
+          {session.permission_mode ? (
+            <span className="model">{modeLabel(session.permission_mode)}</span>
+          ) : null}
+        </div>
+      </a>
+      <div className="card-footer">
+        <span>{timeAgo(session.last_activity_at)}</span>
+        {onArchive ? (
+          <button
+            type="button"
+            className="card-archive"
+            title="Remove this finished session from the fleet (kept in history)"
+            onClick={onArchive}
+          >
+            Archive
+          </button>
+        ) : null}
       </div>
-      <div className="card-title">{session.title || session.native_id}</div>
-      <div className="card-meta">
-        <span className="project">{projectName(session.project ?? "")}</span>
-        {session.model ? <span className="model">{session.model}</span> : null}
-      </div>
-      <div className="card-footer">{timeAgo(session.last_activity_at)}</div>
-    </a>
+    </div>
   );
 }
 
@@ -158,12 +194,20 @@ export function FleetView() {
   if (isLoading) return <div className="notice">Loading sessions…</div>;
   if (error) return <div className="notice error">{String(error)}</div>;
 
+  const archive = useMutation({
+    mutationFn: (id: string) => api.archiveSession(id),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["sessions"] }),
+  });
+
   const sessions = data?.sessions ?? [];
-  // Sessions needing a human float to the top of the active grid.
+  // Sessions needing a human float to the top of the active grid. Archived
+  // ones are "cleaned up" — hidden from the fleet, still in the event log.
   const active = sessions
     .filter((s) => isActive(s.state ?? ""))
     .sort((a, b) => Number(b.state === "waiting_on_user") - Number(a.state === "waiting_on_user"));
-  const historical = sessions.filter((s) => !isActive(s.state ?? ""));
+  const historical = sessions.filter(
+    (s) => !isActive(s.state ?? "") && s.state !== "archived",
+  );
 
   return (
     <div className="fleet">
@@ -194,7 +238,7 @@ export function FleetView() {
           <h2>History</h2>
           <div className="grid">
             {historical.map((s) => (
-              <SessionCard key={s.id} session={s} />
+              <SessionCard key={s.id} session={s} onArchive={() => archive.mutate(s.id)} />
             ))}
           </div>
         </>

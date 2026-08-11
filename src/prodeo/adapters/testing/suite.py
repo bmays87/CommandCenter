@@ -106,6 +106,9 @@ class AdapterConformanceSuite:
             if not caps.send_prompts:
                 with pytest.raises(expected):
                     await adapter.send_prompt(ref, "hello")
+            if not caps.set_model:
+                with pytest.raises(expected):
+                    await adapter.set_model(ref, "some-model")
             if not (caps.respond_to_permissions or caps.answer_questions):
                 iref = InteractionRef(
                     adapter=adapter.metadata.name,

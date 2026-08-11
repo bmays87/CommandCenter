@@ -2,10 +2,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "../api/client";
-import type { ProdeoEvent } from "../api/types";
+import { isActive, type ProdeoEvent } from "../api/types";
 import { projectName, shortTime, timeAgo } from "../format";
 import { useLiveEvents } from "../live";
+import { Composer } from "./Composer";
 import { InteractionCard } from "./InteractionCard";
+import { modeLabel } from "./ModePicker";
 
 function payloadText(event: ProdeoEvent): string {
   const payload = (event.payload ?? {}) as Record<string, unknown>;
@@ -168,6 +170,12 @@ export function SessionView({ id }: { id: string }) {
             <span className={`badge state-${s.state}`}>{(s.state ?? "").replace(/_/g, " ")}</span>
             <span className="project">{projectName(s.project ?? "")}</span>
             {s.model ? <span className="model">{s.model}</span> : null}
+            {/* Model & mode are live controls in the composer below; the header
+                just shows the current mode for observed (non-controllable)
+                sessions, which have no composer. */}
+            {s.permission_mode && !(s.metadata?.["controlled"] === "true") ? (
+              <span className="model">{modeLabel(s.permission_mode)}</span>
+            ) : null}
             <span className="ago">{timeAgo(s.last_activity_at)}</span>
             {s.project ? (
               <button
@@ -206,6 +214,9 @@ export function SessionView({ id }: { id: string }) {
         ))}
         <div ref={bottomRef} />
       </div>
+      {s && isActive(s.state ?? "") && s.metadata?.["controlled"] === "true" ? (
+        <Composer session={s} />
+      ) : null}
     </div>
   );
 }

@@ -44,6 +44,8 @@ class FakeSdkClient:
         self.decide = decide
         self.connected = False
         self.queries: list[str] = []
+        self.models: list[str | None] = []
+        self.modes: list[str] = []
         self.interrupted = False
         self.disconnected = False
         self._messages: asyncio.Queue[Any] = asyncio.Queue()
@@ -64,6 +66,15 @@ class FakeSdkClient:
 
     async def interrupt(self) -> None:
         self.interrupted = True
+
+    async def set_model(self, model: str | None = None) -> None:
+        self.models.append(model)
+
+    async def set_permission_mode(self, mode: str) -> None:
+        self.modes.append(mode)
+
+    async def get_context_usage(self) -> dict[str, Any]:
+        return {"percentage": 21.0, "totalTokens": 42_000, "maxTokens": 200_000, "model": "opus"}
 
     async def disconnect(self) -> None:
         self.disconnected = True
@@ -111,6 +122,10 @@ def harness(tmp_path: Path) -> Harness:
 async def test_control_capabilities_declared_with_factory(harness: Harness) -> None:
     caps = harness.adapter.capabilities
     assert caps.launch and caps.terminate and caps.respond_to_permissions and caps.send_prompts
+    assert caps.set_model
+    assert caps.set_permission_mode
+    assert caps.interrupt
+    assert caps.report_context
     assert not caps.answer_questions
 
 
@@ -210,6 +225,14 @@ async def test_control_refused_for_sessions_we_did_not_launch(harness: Harness) 
         await harness.adapter.terminate(foreign)
     with pytest.raises(RuntimeError):
         await harness.adapter.send_prompt(foreign, "hi")
+    with pytest.raises(RuntimeError):
+        await harness.adapter.set_model(foreign, "opus")
+    with pytest.raises(RuntimeError):
+        await harness.adapter.set_permission_mode(foreign, "plan")
+    with pytest.raises(RuntimeError):
+        await harness.adapter.interrupt(foreign)
+    with pytest.raises(RuntimeError):
+        await harness.adapter.context_usage(foreign)
     await harness.adapter.stop()
 
 
@@ -219,6 +242,58 @@ async def test_send_prompt_queues_on_owned_session(harness: Harness) -> None:
     ref = await harness.adapter.launch(LaunchSpec(prompt="go"))
     await harness.adapter.send_prompt(ref, "and then?")
     assert harness.clients[0].queries == ["go", "and then?"]
+    await harness.adapter.stop()
+
+
+@pytest.mark.asyncio
+async def test_set_model_switches_owned_session(harness: Harness) -> None:
+    await harness.start()
+    ref = await harness.adapter.launch(LaunchSpec(prompt="go"))
+
+    await harness.adapter.set_model(ref, "opus")
+    await harness.adapter.set_model(ref, "")  # empty = back to the default
+
+    assert harness.clients[0].models == ["opus", None]
+    await harness.adapter.stop()
+
+
+@pytest.mark.asyncio
+async def test_set_permission_mode_switches_owned_session(harness: Harness) -> None:
+    await harness.start()
+    ref = await harness.adapter.launch(LaunchSpec(prompt="go"))
+
+    await harness.adapter.set_permission_mode(ref, "plan")
+    await harness.adapter.set_permission_mode(ref, "acceptEdits")
+
+    assert harness.clients[0].modes == ["plan", "acceptEdits"]
+    await harness.adapter.stop()
+
+
+@pytest.mark.asyncio
+async def test_interrupt_stops_the_turn_without_ending_the_session(harness: Harness) -> None:
+    await harness.start()
+    ref = await harness.adapter.launch(LaunchSpec(prompt="go"))
+    client = harness.clients[0]
+
+    await harness.adapter.interrupt(ref)
+
+    # Unlike terminate: the SDK client is interrupted but NOT disconnected, so
+    # the session is still owned and can take a follow-up prompt.
+    assert client.interrupted and not client.disconnected
+    await harness.adapter.send_prompt(ref, "carry on")
+    assert client.queries == ["go", "carry on"]
+    await harness.adapter.stop()
+
+
+@pytest.mark.asyncio
+async def test_context_usage_returns_the_sdk_breakdown(harness: Harness) -> None:
+    await harness.start()
+    ref = await harness.adapter.launch(LaunchSpec(prompt="go"))
+
+    usage = await harness.adapter.context_usage(ref)
+
+    assert usage["percentage"] == 21.0
+    assert usage["maxTokens"] == 200_000
     await harness.adapter.stop()
 
 

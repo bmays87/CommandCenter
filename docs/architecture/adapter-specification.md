@@ -38,6 +38,7 @@ class AgentAdapter(Protocol):
     async def terminate(self, session: SessionRef) -> None: ...
     async def respond(self, interaction: InteractionRef, answer: Answer) -> None: ...
     async def send_prompt(self, session: SessionRef, prompt: str) -> None: ...
+    async def set_model(self, session: SessionRef, model: str) -> None: ...
 ```
 
 `Answer` comes from `prodeo.mediation` (a permission's `allow`/`deny` plus
@@ -51,6 +52,14 @@ adapter-specific `options` dict.
 against v1 must rebuild — the manager refuses version mismatches at load time.
 `ObserveOnlyAdapter` gives every control method a refusing default, so
 observe-only adapters need no changes beyond re-releasing against v2.
+
+**Adapter API v3** added `set_model()`: switch the model an *active* session
+runs on, mid-session. `model` is an adapter-native model name or alias; the
+empty string means "reset to the agent's default". Like the rest of the
+control surface it is capability-gated (`set_model`), and adapters that only
+control sessions they launched themselves must refuse foreign sessions the
+same way they do for `send_prompt`. The dashboard exposes it from the new-
+and active-session controls via `POST /api/sessions/{id}/model`.
 
 Blocked agents surface through observations, not control calls: an adapter
 reports `InteractionObservation` (kind `permission` or `question`) when its
@@ -75,6 +84,7 @@ class AdapterCapabilities(BaseModel):
     respond_to_permissions: bool = False
     answer_questions: bool = False
     send_prompts: bool = False
+    set_model: bool = False
     historical_sessions: bool = False
 ```
 

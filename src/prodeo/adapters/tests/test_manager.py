@@ -271,12 +271,14 @@ class ControlAdapter(ScriptedAdapter):
             respond_to_permissions=True,
             answer_questions=True,
             send_prompts=True,
+            set_model=True,
         )
         self.descriptors = []
         self.launched: list[LaunchSpec] = []
         self.terminated: list[SessionRef] = []
         self.responses: list[tuple[InteractionRef, Answer]] = []
         self.prompts: list[tuple[SessionRef, str]] = []
+        self.models: list[tuple[SessionRef, str]] = []
 
     async def launch(self, spec: LaunchSpec) -> SessionRef:
         self.launched.append(spec)
@@ -290,6 +292,9 @@ class ControlAdapter(ScriptedAdapter):
 
     async def send_prompt(self, session: SessionRef, prompt: str) -> None:
         self.prompts.append((session, prompt))
+
+    async def set_model(self, session: SessionRef, model: str) -> None:
+        self.models.append((session, model))
 
 
 @pytest.mark.asyncio
@@ -359,9 +364,13 @@ async def test_terminate_and_send_prompt_dispatch(
     session = await manager.launch("controlled", LaunchSpec(project="/p"))
 
     await manager.send_prompt(session.id, "and another thing")
+    await manager.set_model(session.id, "opus")
     await manager.terminate(session.id)
 
     assert adapter.prompts[0][1] == "and another thing"
+    assert adapter.models[0][1] == "opus"
+    refreshed = registry.get(session.id)
+    assert refreshed is not None and refreshed.model == "opus"  # refreshed immediately
     assert adapter.terminated[0].native_id == "launched-1"
     with pytest.raises(UnknownSessionError):
         await manager.terminate("nope")

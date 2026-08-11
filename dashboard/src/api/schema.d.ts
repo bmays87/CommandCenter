@@ -529,6 +529,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{session_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive Session
+         * @description Remove a finished session from the fleet (event-sourced, reversible).
+         *
+         *     Archiving is a state transition, not a hard delete: the log is the
+         *     durable record (ADR-0002), so the session leaves the active view but
+         *     its history is intact. Only terminal sessions can be archived — a
+         *     running one must be stopped first (409).
+         */
+        post: operations["archive_session_api_sessions__session_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{session_id}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Session Context
+         * @description Context-window usage for a live session (the composer pill).
+         *
+         *     The adapter's shape is CLI-owned, so map it defensively: unknown or
+         *     missing fields become zeros rather than an error, and the pill hides
+         *     itself when nothing useful comes back.
+         */
+        get: operations["session_context_api_sessions__session_id__context_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/{session_id}/events": {
         parameters: {
             query?: never;
@@ -540,6 +589,73 @@ export interface paths {
         get: operations["session_events_api_sessions__session_id__events_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{session_id}/interrupt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Interrupt Session
+         * @description Stop the session's current turn without ending it.
+         *
+         *     Unlike ``/terminate``, the session stays alive and keeps any queued
+         *     follow-up prompt — this is the composer's Stop button.
+         */
+        post: operations["interrupt_session_api_sessions__session_id__interrupt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{session_id}/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Session Model
+         * @description Switch the model a controlled session runs on, mid-session.
+         */
+        post: operations["set_session_model_api_sessions__session_id__model_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{session_id}/permission-mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Session Permission Mode
+         * @description Switch how a controlled session handles permissions, mid-session.
+         *
+         *     Plan (no execution), Manual (ask each time), Edit Automatically
+         *     (auto-accept edits), or Auto (bypass checks). Applies to the *running*
+         *     agent; a launch sets the starting mode via ``LaunchRequest``.
+         */
+        post: operations["set_session_permission_mode_api_sessions__session_id__permission_mode_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -994,6 +1110,33 @@ export interface components {
             node: string;
         };
         /**
+         * ContextUsage
+         * @description Context-window usage for a live session, mapped from the adapter's
+         *     (CLI-owned) shape into a stable, small view for the composer pill.
+         */
+        ContextUsage: {
+            /**
+             * Max Tokens
+             * @default 0
+             */
+            max_tokens: number;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Percentage
+             * @default 0
+             */
+            percentage: number;
+            /**
+             * Total Tokens
+             * @default 0
+             */
+            total_tokens: number;
+        };
+        /**
          * CreateScheduleRequest
          * @description Define a cron-style agent launch (the launch fields mirror LaunchRequest).
          */
@@ -1436,7 +1579,7 @@ export interface components {
         HealthResponse: {
             /**
              * Boot Id
-             * @default 01KZPW128FFEFS0FBSM1M4KGNN
+             * @default 01KZQ8GNRA4T7SNRR39QB9608F
              */
             boot_id: string;
             /** Node */
@@ -1715,6 +1858,11 @@ export interface components {
             /** Native Id */
             native_id: string;
             /**
+             * Permission Mode
+             * @default
+             */
+            permission_mode: string;
+            /**
              * Project
              * @default
              */
@@ -1737,6 +1885,28 @@ export interface components {
          * @enum {string}
          */
         SessionState: "discovered" | "starting" | "running" | "waiting_on_user" | "completed" | "failed" | "stopped" | "archived";
+        /**
+         * SetModelRequest
+         * @description Switch an active session's model (empty = the agent's default).
+         */
+        SetModelRequest: {
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+        };
+        /**
+         * SetPermissionModeRequest
+         * @description Switch how an active session handles permissions.
+         */
+        SetPermissionModeRequest: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "default" | "plan" | "acceptEdits" | "bypassPermissions";
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -2723,6 +2893,68 @@ export interface operations {
             };
         };
     };
+    archive_session_api_sessions__session_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_context_api_sessions__session_id__context_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContextUsage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     session_events_api_sessions__session_id__events_get: {
         parameters: {
             query?: {
@@ -2745,6 +2977,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    interrupt_session_api_sessions__session_id__interrupt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_session_model_api_sessions__session_id__model_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetModelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_session_permission_mode_api_sessions__session_id__permission_mode_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetPermissionModeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
                 };
             };
             /** @description Validation Error */

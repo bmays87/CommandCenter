@@ -47,7 +47,7 @@ from prodeo_adapter_claude_code.format import interaction_content
 from prodeo_adapter_claude_code.launcher import ClientFactory, SdkLauncher, sdk_available
 from prodeo_adapter_claude_code.parser import TranscriptParser
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 
 _PEEK_BYTES = 64 * 1024  # how much of a transcript discovery reads for metadata
 
@@ -73,6 +73,10 @@ class ClaudeCodeAdapter(ObserveOnlyAdapter):
             terminate=control,
             respond_to_permissions=control,
             send_prompts=control,
+            set_model=control,
+            set_permission_mode=control,
+            interrupt=control,
+            report_context=control,
         )
         self._client_factory = client_factory
         self._launcher: SdkLauncher | None = None
@@ -149,6 +153,26 @@ class ClaudeCodeAdapter(ObserveOnlyAdapter):
         launcher = self._require_launcher("send_prompt")
         self._require_owned(session.native_id)
         await launcher.send_prompt(session.native_id, prompt)
+
+    async def set_model(self, session: SessionRef, model: str) -> None:
+        launcher = self._require_launcher("set_model")
+        self._require_owned(session.native_id)
+        await launcher.set_model(session.native_id, model)
+
+    async def set_permission_mode(self, session: SessionRef, mode: str) -> None:
+        launcher = self._require_launcher("set_permission_mode")
+        self._require_owned(session.native_id)
+        await launcher.set_permission_mode(session.native_id, mode)
+
+    async def interrupt(self, session: SessionRef) -> None:
+        launcher = self._require_launcher("interrupt")
+        self._require_owned(session.native_id)
+        await launcher.interrupt(session.native_id)
+
+    async def context_usage(self, session: SessionRef) -> dict[str, Any]:
+        launcher = self._require_launcher("context_usage")
+        self._require_owned(session.native_id)
+        return await launcher.context_usage(session.native_id)
 
     def _require_launcher(self, capability: str) -> SdkLauncher:
         if self._launcher is None:

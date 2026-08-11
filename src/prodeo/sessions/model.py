@@ -39,6 +39,11 @@ class Session(BaseModel):
     title: str = ""
     project: str = ""
     model: str | None = None
+    #: How the agent handles permissions right now, adapter-native
+    #: (``default``/``plan``/``acceptEdits``/``bypassPermissions`` for Claude
+    #: Code). Empty = unknown / the agent's own default. Descriptive: set after
+    #: a control call, re-confirmed by the adapter's observations.
+    permission_mode: str = ""
     state: SessionState = SessionState.DISCOVERED
     created_at: datetime = Field(default_factory=_now)
     last_activity_at: datetime = Field(default_factory=_now)

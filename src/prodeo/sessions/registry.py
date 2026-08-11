@@ -185,6 +185,27 @@ class SessionRegistry:
         if session is not None:
             session.last_activity_at = at or datetime.now(UTC)
 
+    def refresh_model(self, session_id: str, model: str) -> None:
+        """Record a model change immediately after a control call.
+
+        Descriptive, like discovery's field refreshes: no event is published;
+        the adapter's own observations re-confirm (or correct) it as the
+        session's next activity is watched.
+        """
+        session = self._by_id.get(session_id)
+        if session is not None:
+            session.model = model
+
+    def refresh_permission_mode(self, session_id: str, mode: str) -> None:
+        """Record a permission-mode change immediately after a control call.
+
+        Descriptive, exactly like :meth:`refresh_model`: no event, the
+        adapter re-confirms on its next observation.
+        """
+        session = self._by_id.get(session_id)
+        if session is not None:
+            session.permission_mode = mode
+
     # ------------------------------------------------------------- rebuild
 
     async def rebuild(self, store: EventStore) -> None:

@@ -3,6 +3,7 @@ import type {
   AppStatus,
   AssetResult,
   AssetStatus,
+  ContextUsage,
   DirectoryListing,
   EnvironmentReport,
   HealthResponse,
@@ -156,8 +157,15 @@ export const api = {
   launchSession: (body: LaunchRequest) => post<Session>("/api/sessions", body),
   terminateSession: (id: string) =>
     post<Session>(`/api/sessions/${id}/terminate`),
+  interruptSession: (id: string) => post<Session>(`/api/sessions/${id}/interrupt`),
+  archiveSession: (id: string) => post<Session>(`/api/sessions/${id}/archive`),
+  sessionContext: (id: string) => get<ContextUsage>(`/api/sessions/${id}/context`),
   promptSession: (id: string, prompt: string) =>
     post<Session>(`/api/sessions/${id}/prompt`, { prompt }),
+  setSessionModel: (id: string, model: string) =>
+    post<Session>(`/api/sessions/${id}/model`, { model }),
+  setSessionPermissionMode: (id: string, mode: string) =>
+    post<Session>(`/api/sessions/${id}/permission-mode`, { mode }),
   extensions: () => get<ExtensionListResponse>("/api/extensions"),
   extension: (name: string) => get<ExtensionDetail>(`/api/extensions/${name}`),
   extensionCatalog: () => get<Catalog>("/api/extensions/catalog"),

@@ -41,6 +41,7 @@ from prodeo.errors import (
     AdapterOperationError,
     AppNotReadyError,
     CapabilityNotSupportedError,
+    IllegalTransitionError,
     InteractionAlreadyResolvedError,
     InvalidScheduleError,
     MachineActionError,
@@ -79,7 +80,7 @@ from prodeo.mediation import (
 from prodeo.persistence.interface import EventQuery, EventStore
 from prodeo.presence import ClientPresence, PresenceTracker
 from prodeo.scheduler import Schedule, SchedulerService
-from prodeo.sessions import Session, SessionRegistry
+from prodeo.sessions import Session, SessionRegistry, SessionState
 
 _log = structlog.get_logger(__name__)
 
@@ -96,6 +97,9 @@ _ERROR_STATUS: dict[type[ProdeoError], int] = {
     CapabilityNotSupportedError: 400,
     InvalidScheduleError: 400,
     InteractionAlreadyResolvedError: 409,
+    #: Conflict - the session is not in a state this transition allows (e.g.
+    #: archiving one that is still running; stop it first).
+    IllegalTransitionError: 409,
     #: Payment Required - the extension exists, the caller may not have it.
     NotEntitledError: 402,
     #: Precondition Failed - this machine cannot run it (no GPU, wrong Python).
@@ -182,6 +186,40 @@ class LaunchRequest(BaseModel):
 
 class PromptRequest(BaseModel):
     prompt: str
+
+
+class SetModelRequest(BaseModel):
+    """Switch an active session's model (empty = the agent's default)."""
+
+    model: str = ""
+
+
+#: Adapter-native permission modes we accept, with the human labels the
+#: dashboard shows. Validated here so an unknown mode never reaches an adapter.
+PERMISSION_MODES: dict[str, str] = {
+    "default": "Manual",
+    "plan": "Plan",
+    "acceptEdits": "Edit Automatically",
+    "bypassPermissions": "Auto",
+}
+
+
+class SetPermissionModeRequest(BaseModel):
+    """Switch how an active session handles permissions."""
+
+    mode: Literal["default", "plan", "acceptEdits", "bypassPermissions"]
+
+
+class ContextUsage(BaseModel):
+    """Context-window usage for a live session, mapped from the adapter's
+    (CLI-owned) shape into a stable, small view for the composer pill."""
+
+    #: Percent of the context window in use (0-100).
+    percentage: float = 0.0
+    total_tokens: int = 0
+    max_tokens: int = 0
+    #: The model the usage was computed for; may differ from a just-switched one.
+    model: str = ""
 
 
 class ScheduleListResponse(BaseModel):
@@ -550,6 +588,94 @@ def create_app(
         if session is None:  # pragma: no cover - send_prompt already 404s first
             raise HTTPException(status_code=404, detail="unknown session")
         return session
+
+    @app.post(
+        "/api/sessions/{session_id}/model",
+        response_model=Session,
+        dependencies=[auth],
+    )
+    async def set_session_model(session_id: str, body: SetModelRequest) -> Session:
+        """Switch the model a controlled session runs on, mid-session."""
+        await manager.set_model(session_id, body.model)
+        session = registry.get(session_id)
+        if session is None:  # pragma: no cover - set_model already 404s first
+            raise HTTPException(status_code=404, detail="unknown session")
+        return session
+
+    @app.post(
+        "/api/sessions/{session_id}/permission-mode",
+        response_model=Session,
+        dependencies=[auth],
+    )
+    async def set_session_permission_mode(
+        session_id: str, body: SetPermissionModeRequest
+    ) -> Session:
+        """Switch how a controlled session handles permissions, mid-session.
+
+        Plan (no execution), Manual (ask each time), Edit Automatically
+        (auto-accept edits), or Auto (bypass checks). Applies to the *running*
+        agent; a launch sets the starting mode via ``LaunchRequest``.
+        """
+        await manager.set_permission_mode(session_id, body.mode)
+        session = registry.get(session_id)
+        if session is None:  # pragma: no cover - set_permission_mode 404s first
+            raise HTTPException(status_code=404, detail="unknown session")
+        return session
+
+    @app.post(
+        "/api/sessions/{session_id}/interrupt",
+        response_model=Session,
+        dependencies=[auth],
+    )
+    async def interrupt_session(session_id: str) -> Session:
+        """Stop the session's current turn without ending it.
+
+        Unlike ``/terminate``, the session stays alive and keeps any queued
+        follow-up prompt — this is the composer's Stop button.
+        """
+        await manager.interrupt(session_id)
+        session = registry.get(session_id)
+        if session is None:  # pragma: no cover - interrupt already 404s first
+            raise HTTPException(status_code=404, detail="unknown session")
+        return session
+
+    @app.get(
+        "/api/sessions/{session_id}/context",
+        response_model=ContextUsage,
+        dependencies=[auth],
+    )
+    async def session_context(session_id: str) -> ContextUsage:
+        """Context-window usage for a live session (the composer pill).
+
+        The adapter's shape is CLI-owned, so map it defensively: unknown or
+        missing fields become zeros rather than an error, and the pill hides
+        itself when nothing useful comes back.
+        """
+        raw = await manager.context_usage(session_id)
+        return ContextUsage(
+            percentage=float(raw.get("percentage", 0) or 0),
+            total_tokens=int(raw.get("totalTokens", 0) or 0),
+            max_tokens=int(raw.get("maxTokens", 0) or 0),
+            model=str(raw.get("model", "") or ""),
+        )
+
+    @app.post(
+        "/api/sessions/{session_id}/archive",
+        response_model=Session,
+        dependencies=[auth],
+    )
+    async def archive_session(session_id: str) -> Session:
+        """Remove a finished session from the fleet (event-sourced, reversible).
+
+        Archiving is a state transition, not a hard delete: the log is the
+        durable record (ADR-0002), so the session leaves the active view but
+        its history is intact. Only terminal sessions can be archived — a
+        running one must be stopped first (409).
+        """
+        _require_write()
+        return await registry.observe_state(
+            session_id, SessionState.ARCHIVED, reason="archived_by_user"
+        )
 
     @app.get("/api/schedules", response_model=ScheduleListResponse, dependencies=[auth])
     async def list_schedules() -> ScheduleListResponse:

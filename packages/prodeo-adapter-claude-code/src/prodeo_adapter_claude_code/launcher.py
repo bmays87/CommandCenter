@@ -15,7 +15,7 @@ indefinitely, so it parks on an ``asyncio.Future[Answer]`` that
 import asyncio
 import contextlib
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from ulid import ULID
 
@@ -49,6 +49,12 @@ class SdkClient(Protocol):
     def receive_messages(self) -> AsyncIterator[Any]: ...
 
     async def interrupt(self) -> None: ...
+
+    async def set_model(self, model: str | None = None) -> None: ...
+
+    async def set_permission_mode(self, mode: str) -> None: ...
+
+    async def get_context_usage(self) -> dict[str, Any]: ...
 
     async def disconnect(self) -> None: ...
 
@@ -104,7 +110,11 @@ def default_client_factory(spec: LaunchSpec, decide: DecideFn) -> SdkClient:
     env: dict[str, str] = dict(kwargs.pop("env", None) or {})
     env["PRODEO_MANAGED"] = "1"
     options = ClaudeAgentOptions(can_use_tool=can_use_tool, env=env, **kwargs)
-    return ClaudeSDKClient(options=options)
+    # The SDK client types set_permission_mode narrower (a PermissionMode
+    # Literal) than our transport-agnostic SdkClient Protocol (str). The API
+    # validates the mode against exactly that Literal before it reaches here,
+    # so the cast is sound.
+    return cast("SdkClient", ClaudeSDKClient(options=options))
 
 
 class _SdkSession:
@@ -185,6 +195,44 @@ class SdkLauncher:
         session = self._require(native_id)
         assert session.client is not None
         await session.client.query(prompt)
+
+    async def set_model(self, native_id: str, model: str) -> None:
+        """Switch the session's model via the SDK's control request.
+
+        The SDK accepts an alias (``sonnet``/``opus``/``haiku``) or a full
+        model id; ``None`` resets to the default, which is how an empty
+        ``model`` from the caller is delivered.
+        """
+        session = self._require(native_id)
+        assert session.client is not None
+        await session.client.set_model(model or None)
+
+    async def set_permission_mode(self, native_id: str, mode: str) -> None:
+        """Switch the session's permission mode via the SDK control request.
+
+        ``mode`` is an SDK ``PermissionMode``
+        (``default``/``plan``/``acceptEdits``/``bypassPermissions``); the API
+        validates it before we get here, so the SDK never sees an unknown mode.
+        """
+        session = self._require(native_id)
+        assert session.client is not None
+        await session.client.set_permission_mode(mode)
+
+    async def interrupt(self, native_id: str) -> None:
+        """Stop the current turn but keep the session connected for more input.
+
+        Distinct from :meth:`terminate`, which tears the session down: here the
+        SDK client is left alive so a queued follow-up prompt still lands.
+        """
+        session = self._require(native_id)
+        assert session.client is not None
+        await session.client.interrupt()
+
+    async def context_usage(self, native_id: str) -> dict[str, Any]:
+        """The SDK's context-window usage breakdown for this session."""
+        session = self._require(native_id)
+        assert session.client is not None
+        return await session.client.get_context_usage()
 
     def owns(self, native_id: str) -> bool:
         return native_id in self._sessions

@@ -46,11 +46,21 @@ class FakeControlAdapter(ObserveOnlyAdapter):
     def __init__(self) -> None:
         self.metadata = AdapterMetadata(name="fake", version="0.0.1")
         self.capabilities = AdapterCapabilities(
-            launch=True, terminate=True, respond_to_permissions=True, send_prompts=True
+            launch=True,
+            terminate=True,
+            respond_to_permissions=True,
+            send_prompts=True,
+            set_model=True,
+            set_permission_mode=True,
+            interrupt=True,
+            report_context=True,
         )
         self.responses: list[tuple[InteractionRef, Answer]] = []
         self.terminated: list[str] = []
         self.prompts: list[str] = []
+        self.models: list[str] = []
+        self.modes: list[str] = []
+        self.interrupted: list[str] = []
 
     async def start(self, ctx: AdapterContext) -> None:
         pass
@@ -75,6 +85,18 @@ class FakeControlAdapter(ObserveOnlyAdapter):
 
     async def send_prompt(self, session: SessionRef, prompt: str) -> None:
         self.prompts.append(prompt)
+
+    async def set_model(self, session: SessionRef, model: str) -> None:
+        self.models.append(model)
+
+    async def set_permission_mode(self, session: SessionRef, mode: str) -> None:
+        self.modes.append(mode)
+
+    async def interrupt(self, session: SessionRef) -> None:
+        self.interrupted.append(session.native_id)
+
+    async def context_usage(self, session: SessionRef) -> dict[str, object]:
+        return {"percentage": 33.0, "totalTokens": 66_000, "maxTokens": 200_000, "model": "opus"}
 
 
 class Env:
@@ -370,11 +392,62 @@ async def test_launch_terminate_prompt_roundtrip(env: Env) -> None:
     assert prompted.status_code == 200
     assert env.adapter.prompts == ["also add tests"]
 
+    switched = await env.client.post(f"/api/sessions/{session['id']}/model", json={"model": "opus"})
+    assert switched.status_code == 200
+    assert env.adapter.models == ["opus"]
+    assert switched.json()["model"] == "opus"
+
+    moded = await env.client.post(
+        f"/api/sessions/{session['id']}/permission-mode", json={"mode": "plan"}
+    )
+    assert moded.status_code == 200
+    assert env.adapter.modes == ["plan"]
+    assert moded.json()["permission_mode"] == "plan"
+
+    # Stop the current turn: the session is returned (still alive), not ended.
+    interrupted = await env.client.post(f"/api/sessions/{session['id']}/interrupt")
+    assert interrupted.status_code == 200
+    assert env.adapter.interrupted == ["launched-1"]
+
+    # Context pill: the adapter's shape is mapped to the stable ContextUsage.
+    ctx = await env.client.get(f"/api/sessions/{session['id']}/context")
+    assert ctx.status_code == 200
+    body = ctx.json()
+    assert body["percentage"] == 33.0
+    assert body["max_tokens"] == 200_000
+    assert body["total_tokens"] == 66_000
+
+    # An unknown mode is rejected by the request model before any adapter call.
+    bad = await env.client.post(
+        f"/api/sessions/{session['id']}/permission-mode", json={"mode": "yolo"}
+    )
+    assert bad.status_code == 422
+    assert env.adapter.modes == ["plan"]
+
     terminated = await env.client.post(f"/api/sessions/{session['id']}/terminate")
     assert terminated.status_code == 200
     assert env.adapter.terminated == ["launched-1"]
 
     assert (await env.client.post("/api/sessions/nope/terminate")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_archive_hides_a_finished_session_and_refuses_an_active_one(env: Env) -> None:
+    session = (
+        await env.client.post("/api/sessions", json={"adapter": "fake", "prompt": "go"})
+    ).json()
+
+    # A running (here: starting) session cannot be archived - stop it first.
+    active = await env.client.post(f"/api/sessions/{session['id']}/archive")
+    assert active.status_code == 409
+
+    # Drive it terminal, then archive: event-sourced, so the state sticks.
+    await env.registry.observe_state(session["id"], SessionState.STOPPED, reason="test")
+    archived = await env.client.post(f"/api/sessions/{session['id']}/archive")
+    assert archived.status_code == 200
+    assert archived.json()["state"] == "archived"
+
+    assert (await env.client.post("/api/sessions/nope/archive")).status_code == 404
 
 
 @pytest.mark.asyncio

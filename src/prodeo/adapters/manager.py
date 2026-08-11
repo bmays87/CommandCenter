@@ -186,6 +186,10 @@ class AdapterManager:
                 metadata={"controlled": "true"},
             ),
         )
+        # Show the starting permission mode straight away (descriptive, like the
+        # model refresh after a set_model); the launch spec is the source.
+        if spec.permission_mode:
+            self._registry.refresh_permission_mode(session.id, spec.permission_mode)
         self._ensure_watch(adapter_name, adapter, ref.native_id, session.id, session.state)
         return session
 
@@ -209,6 +213,64 @@ class AdapterManager:
         except Exception as exc:
             raise await self._operation_failed(
                 session.adapter, "send_prompt", exc, session_id=session.id
+            ) from exc
+
+    async def set_model(self, session_id: str, model: str) -> None:
+        """Switch a session's model through its owning adapter.
+
+        ``model`` is adapter-native (a name or alias); the empty string means
+        "the agent's default". On success the registry's descriptive ``model``
+        is refreshed immediately; the adapter's own observations re-confirm it.
+        """
+        session, adapter = self._require_session(session_id)
+        self._require_capability("set_model", adapter.capabilities.set_model)
+        try:
+            await adapter.set_model(self._session_ref(session), model)
+        except Exception as exc:
+            raise await self._operation_failed(
+                session.adapter, "set_model", exc, session_id=session.id
+            ) from exc
+        self._registry.refresh_model(session.id, model)
+
+    async def set_permission_mode(self, session_id: str, mode: str) -> None:
+        """Switch how a session handles permissions through its owning adapter.
+
+        ``mode`` is adapter-native (Claude Code:
+        ``default``/``plan``/``acceptEdits``/``bypassPermissions``). Mirrors
+        :meth:`set_model`: the registry's descriptive ``permission_mode`` is
+        refreshed on success, and the adapter re-confirms it on its next
+        observation.
+        """
+        session, adapter = self._require_session(session_id)
+        self._require_capability("set_permission_mode", adapter.capabilities.set_permission_mode)
+        try:
+            await adapter.set_permission_mode(self._session_ref(session), mode)
+        except Exception as exc:
+            raise await self._operation_failed(
+                session.adapter, "set_permission_mode", exc, session_id=session.id
+            ) from exc
+        self._registry.refresh_permission_mode(session.id, mode)
+
+    async def interrupt(self, session_id: str) -> None:
+        """Stop a session's current turn without ending it (keeps it usable)."""
+        session, adapter = self._require_session(session_id)
+        self._require_capability("interrupt", adapter.capabilities.interrupt)
+        try:
+            await adapter.interrupt(self._session_ref(session))
+        except Exception as exc:
+            raise await self._operation_failed(
+                session.adapter, "interrupt", exc, session_id=session.id
+            ) from exc
+
+    async def context_usage(self, session_id: str) -> dict[str, Any]:
+        """Context-window usage for a live session, adapter-native shape."""
+        session, adapter = self._require_session(session_id)
+        self._require_capability("context_usage", adapter.capabilities.report_context)
+        try:
+            return await adapter.context_usage(self._session_ref(session))
+        except Exception as exc:
+            raise await self._operation_failed(
+                session.adapter, "context_usage", exc, session_id=session.id
             ) from exc
 
     def _require_adapter(self, name: str) -> AgentAdapter:
