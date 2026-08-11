@@ -191,13 +191,15 @@ export function FleetView() {
     void queryClient.invalidateQueries({ queryKey: ["sessions"] });
   });
 
-  if (isLoading) return <div className="notice">Loading sessions…</div>;
-  if (error) return <div className="notice error">{String(error)}</div>;
-
+  // All hooks must run every render (Rules of Hooks): keep this above the
+  // loading/error early returns, never below them.
   const archive = useMutation({
     mutationFn: (id: string) => api.archiveSession(id),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["sessions"] }),
   });
+
+  if (isLoading) return <div className="notice">Loading sessions…</div>;
+  if (error) return <div className="notice error">{String(error)}</div>;
 
   const sessions = data?.sessions ?? [];
   // Sessions needing a human float to the top of the active grid. Archived
