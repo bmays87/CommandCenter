@@ -47,7 +47,11 @@ export function InboxView() {
               <div key={i.id} className="resolved-row">
                 <span className={`badge status-${i.status}`}>{i.status.replace(/_/g, " ")}</span>
                 <span className="interaction-title">{i.title}</span>
-                {i.answer?.decision ? <span className="decision">{i.answer.decision}</span> : null}
+                {/* A question is answered with text (the chosen option), not a
+                    decision — without the fallback the choice is invisible. */}
+                {i.answer?.decision || i.answer?.text ? (
+                  <span className="decision">{i.answer.decision ?? i.answer.text}</span>
+                ) : null}
                 {i.answered_by ? <span className="by">by {i.answered_by}</span> : null}
               </div>
             ))}

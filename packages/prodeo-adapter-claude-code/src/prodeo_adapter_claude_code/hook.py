@@ -27,7 +27,11 @@ from typing import IO, Any
 import httpx
 from ulid import ULID
 
-from prodeo_adapter_claude_code.format import permission_prompt
+from prodeo_adapter_claude_code.format import (
+    QUESTION_TOOL,
+    interaction_content,
+    question_updated_input,
+)
 from prodeo_adapter_claude_code.presence import SinceInputFn, seconds_since_input
 
 ADAPTER = "claude-code"
@@ -76,11 +80,19 @@ def parse_permission_request(raw: str) -> dict[str, Any] | None:
     return data
 
 
-def decision_output(resolution: dict[str, Any]) -> dict[str, Any] | None:
+def decision_output(
+    resolution: dict[str, Any],
+    *,
+    tool_name: str = "",
+    tool_input: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     """Map the server's terminal interaction state to hook output.
 
     Only an explicit human answer produces output; timeout, cancellation, and
-    anything malformed fall through to the terminal prompt.
+    anything malformed fall through to the terminal prompt. A question-kind
+    answer arrives as bare text (a clicked option label or typed reply,
+    ADR-0019); it becomes allow + ``updatedInput`` carrying the selection — and
+    text that matches no option falls through rather than fabricating a choice.
     """
     if resolution.get("status") != "answered":
         return None
@@ -98,6 +110,11 @@ def decision_output(resolution: dict[str, Any]) -> dict[str, Any] | None:
             "behavior": "deny",
             "message": str(answer.get("text") or "denied via Command Center"),
         }
+    elif tool_name == QUESTION_TOOL and answer.get("text"):
+        updated = question_updated_input(tool_input or {}, str(answer["text"]))
+        if updated is None:
+            return None
+        decision = {"behavior": "allow", "updatedInput": updated}
     else:
         return None
     return {
@@ -147,13 +164,16 @@ def _run(
         return _passthrough()  # at the station: the terminal prompt wins
 
     timeout_s = _env_float(env, "PRODEO_HOOK_TIMEOUT_S", DEFAULT_TIMEOUT_S)
-    title, body = permission_prompt(str(request["tool_name"]), dict(request["tool_input"]))
+    tool_name = str(request["tool_name"])
+    tool_input = dict(request["tool_input"])
+    kind, title, body, options = interaction_content(tool_name, tool_input)
     payload = {
         "adapter": ADAPTER,
         "session_native_id": request["session_id"],
-        "kind": "permission",
+        "kind": kind,
         "title": title,
         "body": body,
+        "options": options,
         "native_id": f"hook-{ULID()}",
         "timeout_s": timeout_s,
     }
@@ -198,7 +218,7 @@ def _run(
     resolution = result.get("resolution")
     if not isinstance(resolution, dict):
         return _passthrough()
-    output = decision_output(resolution)
+    output = decision_output(resolution, tool_name=tool_name, tool_input=tool_input)
     if output is None:
         return _passthrough()
     stdout.write(json.dumps(output))

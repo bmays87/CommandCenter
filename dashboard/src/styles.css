@@ -1144,3 +1144,19 @@ main {
   padding-left: 18px;
   color: var(--text);
 }
+
+/* ---- fleet toolbar + new session ---- */
+
+.fleet-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.new-session {
+  margin-bottom: 16px;
+}
+
+.new-session select {
+  max-width: 280px;
+}

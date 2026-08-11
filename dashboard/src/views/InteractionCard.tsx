@@ -16,6 +16,8 @@ export function InteractionCard({
   const queryClient = useQueryClient();
   const [text, setText] = useState("");
   const [notice, setNotice] = useState("");
+  // Which option button fired, so only it shows as busy while the answer posts.
+  const [chosen, setChosen] = useState<number | null>(null);
 
   const answer = useMutation({
     mutationFn: (body: AnswerRequest) => api.answerInteraction(interaction.id, body),
@@ -73,14 +75,17 @@ export function InteractionCard({
         </div>
       ) : (
         <div className="interaction-actions">
-          {(interaction.options ?? []).map((option) => (
+          {(interaction.options ?? []).map((option, index) => (
             <button
-              key={option}
+              key={`${index}-${option}`}
               className="btn option"
               disabled={busy}
-              onClick={() => answer.mutate({ text: option })}
+              onClick={() => {
+                setChosen(index);
+                answer.mutate({ text: option });
+              }}
             >
-              {option}
+              {busy && chosen === index ? "Sending…" : option}
             </button>
           ))}
           <form

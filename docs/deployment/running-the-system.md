@@ -120,5 +120,28 @@ STT runs on the CPU and logs `stt.cuda_runtime_incomplete`. See
 for the exact libraries and versions; `start-mjolnir.ps1` checks for them on
 startup and prints what's missing.
 
+## Answering agent prompts from the dashboard
+
+Interactive Claude Code sessions mirror their permission prompts and questions
+into Command Center through the `PermissionRequest` hook (ADR-0011), and since
+ADR-0019 an `AskUserQuestion` arrives as a real question — full text, option
+buttons — that you answer with one click in the Inbox.
+
+The hook is **presence-gated** by default: if you have touched this machine's
+keyboard or mouse in the last 90 seconds, the prompt goes to the terminal and
+Command Center never sees it. That is right for the away-from-desk case the
+hook was built for, and exactly wrong if your way of working is the dashboard
+on the same machine. To opt a machine into **Command-Center-first** mediation:
+
+```powershell
+setx PRODEO_PRESENT_THRESHOLD_S 0   # then restart VS Code / the terminal
+```
+
+With `0`, every prompt goes to Command Center, and the terminal prompt appears
+only if the interaction times out (~10 minutes) or is cancelled. Note the
+trade: the keystroke-abort escape (start typing → the terminal prompt takes
+over) is disabled too, because machine-wide input cannot distinguish typing in
+the browser from typing in the IDE.
+
 That's the whole topology. The dashboard is just another client of the same
 server; nothing else is a process you start.

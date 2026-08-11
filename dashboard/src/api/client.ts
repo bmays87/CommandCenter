@@ -121,6 +121,8 @@ export const api = {
   restartServer: () => post<RestartResponse>("/api/system/restart"),
   browse: (path: string) =>
     get<DirectoryListing>(`/api/system/browse?path=${encodeURIComponent(path)}`),
+  openEditor: (path: string) =>
+    post<{ opened: boolean; path: string }>("/api/system/open-editor", { path }),
   sessions: () => get<SessionListResponse>("/api/sessions"),
   session: (id: string) => get<Session>(`/api/sessions/${id}`),
   sessionEvents: (id: string, limit = 500) =>

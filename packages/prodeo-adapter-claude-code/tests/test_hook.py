@@ -126,6 +126,68 @@ def test_non_answers_fall_through_to_the_terminal_prompt(body: dict[str, Any]) -
     assert out == ""
 
 
+QUESTION_INPUT = {
+    "questions": [
+        {
+            "question": "Which approach should we take?",
+            "header": "Approach",
+            "multiSelect": False,
+            "options": [
+                {"label": "Option 1 (Recommended)", "description": "The safe path"},
+                {"label": "Option 2", "description": "The fast path"},
+            ],
+        }
+    ]
+}
+
+
+def test_question_is_submitted_as_question_kind_with_options() -> None:
+    requests: list[httpx.Request] = []
+    transport = transport_returning(resolution(answer={"text": "Option 2"}), requests)
+
+    code, _ = run_hook(
+        stdin_payload(tool_name="AskUserQuestion", tool_input=dict(QUESTION_INPUT)), transport
+    )
+
+    assert code == 0
+    sent = json.loads(requests[0].content)
+    assert sent["kind"] == "question"
+    assert sent["title"] == "Which approach should we take?"
+    assert sent["options"] == ["Option 1 (Recommended)", "Option 2"]
+    assert "1. Option 1 (Recommended) — The safe path" in sent["body"]
+
+
+def test_question_answered_with_text_becomes_allow_with_updated_input() -> None:
+    transport = transport_returning(resolution(answer={"text": "option 1"}), [])
+
+    code, out = run_hook(
+        stdin_payload(tool_name="AskUserQuestion", tool_input=dict(QUESTION_INPUT)), transport
+    )
+
+    assert code == 0
+    decision = json.loads(out)["hookSpecificOutput"]["decision"]
+    assert decision["behavior"] == "allow"
+    assert decision["updatedInput"]["answers"] == {
+        "Which approach should we take?": "Option 1 (Recommended)"
+    }
+
+
+def test_question_answer_matching_no_option_falls_through() -> None:
+    # The terminal prompt decides; the hook must not guess a selection.
+    transport = transport_returning(resolution(answer={"text": "surprise me"}), [])
+    code, out = run_hook(
+        stdin_payload(tool_name="AskUserQuestion", tool_input=dict(QUESTION_INPUT)), transport
+    )
+    assert (code, out) == (0, "")
+
+
+def test_text_answer_on_a_permission_falls_through() -> None:
+    # Bare text answers question-kind only; a permission still needs a decision.
+    transport = transport_returning(resolution(answer={"text": "sounds fine"}), [])
+    code, out = run_hook(stdin_payload(), transport)
+    assert (code, out) == (0, "")
+
+
 def test_http_error_falls_through() -> None:
     code, out = run_hook(stdin_payload(), transport_returning({}, [], status_code=500))
     assert (code, out) == (0, "")

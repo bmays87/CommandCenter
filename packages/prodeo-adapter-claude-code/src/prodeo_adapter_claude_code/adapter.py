@@ -43,7 +43,7 @@ from prodeo.errors import CapabilityNotSupportedError
 from prodeo.mediation.model import Answer, InteractionKind
 from prodeo.sessions.model import SessionDescriptor
 from prodeo.sessions.state import SessionState
-from prodeo_adapter_claude_code.format import permission_prompt
+from prodeo_adapter_claude_code.format import interaction_content
 from prodeo_adapter_claude_code.launcher import ClientFactory, SdkLauncher, sdk_available
 from prodeo_adapter_claude_code.parser import TranscriptParser
 
@@ -165,14 +165,15 @@ class ClaudeCodeAdapter(ObserveOnlyAdapter):
         self, native_id: str, interaction_native_id: str, tool_name: str, input_data: dict[str, Any]
     ) -> None:
         assert self._ctx is not None
-        title, body = permission_prompt(tool_name, input_data)
+        kind, title, body, options = interaction_content(tool_name, input_data)
         await self._ctx.report(
             InteractionObservation(
                 native_id=native_id,
                 interaction_native_id=interaction_native_id,
-                kind=InteractionKind.PERMISSION,
+                kind=InteractionKind(kind),
                 title=title,
                 body=body,
+                options=options,
                 timeout_s=self._permission_timeout_s,
             )
         )

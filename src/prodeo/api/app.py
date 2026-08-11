@@ -43,6 +43,7 @@ from prodeo.errors import (
     CapabilityNotSupportedError,
     InteractionAlreadyResolvedError,
     InvalidScheduleError,
+    MachineActionError,
     NotEntitledError,
     ProdeoError,
     RequirementsNotMetError,
@@ -67,6 +68,7 @@ from prodeo.extensions import (
     ExtensionSummary,
     InstallResult,
 )
+from prodeo.machine import MachineActions
 from prodeo.mediation import (
     Answer,
     Interaction,
@@ -100,6 +102,9 @@ _ERROR_STATUS: dict[type[ProdeoError], int] = {
     RequirementsNotMetError: 412,
     #: Precondition Failed - setup steps incomplete; the detail lists them.
     AppNotReadyError: 412,
+    #: The machine cannot perform the action (no editor, bad path); the
+    #: message says what to fix.
+    MachineActionError: 400,
     AdapterOperationError: 502,
 }
 
@@ -265,6 +270,17 @@ class RestartResponse(BaseModel):
     boot_id: str
 
 
+class OpenEditorRequest(BaseModel):
+    """A project directory to open in the code editor, in a new window."""
+
+    path: str
+
+
+class OpenEditorResponse(BaseModel):
+    opened: bool
+    path: str
+
+
 class DirectoryEntry(BaseModel):
     name: str
     path: str
@@ -356,6 +372,9 @@ def create_app(
     #: Injected by the composition root; records the intent and releases the
     #: idle wait in ``prodeo.server.run``. None = restart is not offered.
     restart_fn: Callable[[], None] | None = None,
+    #: Machine-local actions (ADR-0020); the seam CCAN will occupy. None =
+    #: those endpoints answer 503.
+    machine: MachineActions | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Prodeo Command Center", version=version)
     auth = Depends(make_auth_dependency(api_token))
@@ -751,6 +770,26 @@ def create_app(
             raise HTTPException(status_code=503, detail="restart is not available on this server")
         background.add_task(restart_fn)
         return RestartResponse(restarting=True, boot_id=BOOT_ID)
+
+    @app.post("/api/system/open-editor", response_model=OpenEditorResponse, dependencies=[auth])
+    async def open_editor(body: OpenEditorRequest) -> OpenEditorResponse:
+        """Open a project directory in VS Code, in a new window.
+
+        Goes through the ``MachineActions`` seam (ADR-0020): today the server
+        and the agent machine are the same host, so the local implementation
+        runs ``code --new-window`` here; when CCAN splits out, the same call
+        routes to the node that owns the project. One window per project is
+        deliberate - several projects, several agents, side by side.
+
+        Refused when the API has no token: it launches a program.
+        """
+        _require_write()
+        if machine is None:  # not wired (schema export, focused tests)
+            raise HTTPException(
+                status_code=503, detail="machine actions are not available on this server"
+            )
+        await machine.open_editor(body.path)
+        return OpenEditorResponse(opened=True, path=body.path)
 
     @app.get("/api/system/browse", response_model=DirectoryListing, dependencies=[auth])
     async def browse_directories(path: str = Query(default="")) -> DirectoryListing:

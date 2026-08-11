@@ -115,20 +115,31 @@ GPU/CUDA/audio/Ollama with fix actions rather than one-click installers, and
 all; CUDA remains necessary only for faster-whisper, which has no other GPU
 path.
 
-## Phase 6 — Many Machines
-`EventBus` implementation over NATS (or Redis Streams — ADR at the time); node
-identity + remote agent nodes reporting to a hub; dashboard multi-node fleet view;
-deployment recipes (systemd, Home Assistant add-on).
+## Phase 6 — Many Machines (hub + CCAN)
+The architecture is the **CCAN split** (ADR-0020): the hub — events, sessions,
+mediation, API, dashboard — is platform-independent and runs in a container;
+a **Command Center Agent Node (CCAN)** is installed on every machine that runs
+AI agents and owns everything machine-bound (adapters/transcript watching,
+agent launch, app supervision, filesystem browse, models storage, host probes,
+editor opening). One hub, many CCANs, one dashboard.
+Work: the CCAN installable + its hub authentication; `EventBus` over NATS (or
+Redis Streams — ADR at the time); dashboard multi-node fleet view; deployment
+recipes (hub container, CCAN via systemd / Windows).
+**Due-outs from Phase 5.5 (2026-08-10):** machine actions become node-targeted —
+"open this project in VS Code" and "launch a session here" route to the CCAN
+owning the project. The `MachineActions` seam (`prodeo.machine`) is the wiring
+point; the machine-bound endpoint inventory is listed in ADR-0020.
 **Exit:** sessions on two machines visible and controllable from one dashboard.
 *Deferred* — swapped with Onboarding & Extensibility on 2026-08-09: there is no
 multi-machine use case on the horizon, while the single-machine setup ritual is a
 daily cost. Nothing is lost by waiting — the groundwork is already in place and
 was designed for it: node identity is on every event envelope
-(`Event.node`, `PRODEO_NODE_NAME`) and `EventBus` is a Protocol precisely so a
-broker-backed implementation can arrive without touching services (ADR-0002).
-Docker was dropped from the recipe list: see the note in `docker/README.md` —
-containerizing the core fights its own premise, since the adapters supervise
-agent sessions by watching **host-local** state.
+(`Event.node`, `PRODEO_NODE_NAME`), `EventBus` is a Protocol precisely so a
+broker-backed implementation can arrive without touching services (ADR-0002),
+and the permission hook already has the CCAN shape (machine-local process
+talking inward over authenticated HTTP, ADR-0011). The earlier note that
+containerizing fights the adapters' host-local premise (`docker/README.md`)
+is *resolved* by the split: the hub containerizes, the CCAN stays on the host.
 
 ## Later / Icebox
 Plugin index with signing; Kubernetes operator; Git/Docker integrations as plugins;

@@ -632,6 +632,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/system/open-editor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Editor
+         * @description Open a project directory in VS Code, in a new window.
+         *
+         *     Goes through the ``MachineActions`` seam (ADR-0020): today the server
+         *     and the agent machine are the same host, so the local implementation
+         *     runs ``code --new-window`` here; when CCAN splits out, the same call
+         *     routes to the node that owns the project. One window per project is
+         *     deliberate - several projects, several agents, side by side.
+         *
+         *     Refused when the API has no token: it launches a program.
+         */
+        post: operations["open_editor_api_system_open_editor_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/system/restart": {
         parameters: {
             query?: never;
@@ -1408,7 +1436,7 @@ export interface components {
         HealthResponse: {
             /**
              * Boot Id
-             * @default 01KZNR1KM5Z66HG0FZ6DE4DWV0
+             * @default 01KZPW128FFEFS0FBSM1M4KGNN
              */
             boot_id: string;
             /** Node */
@@ -1559,6 +1587,21 @@ export interface components {
              * @default
              */
             prompt: string;
+        };
+        /**
+         * OpenEditorRequest
+         * @description A project directory to open in the code editor, in a new window.
+         */
+        OpenEditorRequest: {
+            /** Path */
+            path: string;
+        };
+        /** OpenEditorResponse */
+        OpenEditorResponse: {
+            /** Opened */
+            opened: boolean;
+            /** Path */
+            path: string;
         };
         /** PresenceListResponse */
         PresenceListResponse: {
@@ -2828,6 +2871,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnvironmentReport"];
+                };
+            };
+        };
+    };
+    open_editor_api_system_open_editor_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenEditorRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenEditorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

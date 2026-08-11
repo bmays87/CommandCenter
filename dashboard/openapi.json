@@ -1192,7 +1192,7 @@
       "HealthResponse": {
         "properties": {
           "boot_id": {
-            "default": "01KZNR1KM5Z66HG0FZ6DE4DWV0",
+            "default": "01KZPW128FFEFS0FBSM1M4KGNN",
             "title": "Boot Id",
             "type": "string"
           },
@@ -1460,6 +1460,38 @@
           }
         },
         "title": "LaunchSpec",
+        "type": "object"
+      },
+      "OpenEditorRequest": {
+        "description": "A project directory to open in the code editor, in a new window.",
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "OpenEditorRequest",
+        "type": "object"
+      },
+      "OpenEditorResponse": {
+        "properties": {
+          "opened": {
+            "title": "Opened",
+            "type": "boolean"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "opened",
+          "path"
+        ],
+        "title": "OpenEditorResponse",
         "type": "object"
       },
       "PresenceListResponse": {
@@ -3283,6 +3315,45 @@
           }
         },
         "summary": "System Environment"
+      }
+    },
+    "/api/system/open-editor": {
+      "post": {
+        "description": "Open a project directory in VS Code, in a new window.\n\nGoes through the ``MachineActions`` seam (ADR-0020): today the server\nand the agent machine are the same host, so the local implementation\nruns ``code --new-window`` here; when CCAN splits out, the same call\nroutes to the node that owns the project. One window per project is\ndeliberate - several projects, several agents, side by side.\n\nRefused when the API has no token: it launches a program.",
+        "operationId": "open_editor_api_system_open_editor_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenEditorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenEditorResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Editor"
       }
     },
     "/api/system/restart": {

@@ -21,6 +21,7 @@ from ulid import ULID
 
 from prodeo.adapters.interface import LaunchSpec
 from prodeo.mediation.model import Answer
+from prodeo_adapter_claude_code.format import QUESTION_TOOL, question_updated_input
 
 #: (tool_name, tool_input) -> the human's answer. Provided by the launcher to
 #: the client factory, which adapts it to the SDK's ``can_use_tool`` types.
@@ -78,6 +79,16 @@ def default_client_factory(spec: LaunchSpec, decide: DecideFn) -> SdkClient:
         answer = await decide(tool_name, input_data)
         if answer.decision == "allow":
             return PermissionResultAllow(updated_input=answer.updated_input)
+        if answer.decision != "deny" and answer.text and tool_name == QUESTION_TOOL:
+            # A question answered with an option label or free text (ADR-0019):
+            # deliver the selection through updatedInput. Text matching no
+            # option is a refusal to guess, not a deny of the question.
+            updated = question_updated_input(input_data, answer.text)
+            if updated is not None:
+                return PermissionResultAllow(updated_input=updated)
+            return PermissionResultDeny(
+                message=f"answer {answer.text!r} did not match any offered option"
+            )
         return PermissionResultDeny(message=answer.text or "denied via Command Center")
 
     kwargs: dict[str, Any] = dict(spec.options)

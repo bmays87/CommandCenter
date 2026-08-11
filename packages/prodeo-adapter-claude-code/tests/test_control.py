@@ -291,6 +291,67 @@ async def test_default_client_factory_marks_sessions_managed() -> None:
     assert env["KEEP"] == "me"  # caller-supplied env survives the merge
 
 
+QUESTION_INPUT: dict[str, Any] = {
+    "questions": [
+        {
+            "question": "Which approach should we take?",
+            "multiSelect": False,
+            "options": [
+                {"label": "Option 1 (Recommended)", "description": "The safe path"},
+                {"label": "Option 2", "description": "The fast path"},
+            ],
+        }
+    ]
+}
+
+
+def _bridge(answer: Answer) -> Any:
+    """The real can_use_tool callback, with a scripted human answer behind it."""
+    from typing import cast
+
+    from prodeo_adapter_claude_code.launcher import default_client_factory
+
+    async def decide(tool_name: str, input_data: dict[str, Any]) -> Answer:
+        return answer
+
+    client = default_client_factory(LaunchSpec(), decide)
+    return cast("Any", client).options.can_use_tool
+
+
+@pytest.mark.asyncio
+async def test_question_text_answer_becomes_allow_with_updated_input() -> None:
+    """A dashboard click on an option arrives as bare text (ADR-0019); the
+    bridge must deliver it through updatedInput, not treat it as a deny."""
+    from claude_agent_sdk import PermissionResultAllow
+
+    result = await _bridge(Answer(text="option 2"))("AskUserQuestion", dict(QUESTION_INPUT), None)
+
+    assert isinstance(result, PermissionResultAllow)
+    assert result.updated_input is not None
+    assert result.updated_input["answers"] == {"Which approach should we take?": "Option 2"}
+
+
+@pytest.mark.asyncio
+async def test_question_text_matching_no_option_denies_with_the_reason() -> None:
+    from claude_agent_sdk import PermissionResultDeny
+
+    result = await _bridge(Answer(text="just pick one"))(
+        "AskUserQuestion", dict(QUESTION_INPUT), None
+    )
+
+    assert isinstance(result, PermissionResultDeny)
+    assert "did not match" in result.message
+
+
+@pytest.mark.asyncio
+async def test_text_answer_on_an_ordinary_tool_still_denies() -> None:
+    from claude_agent_sdk import PermissionResultDeny
+
+    result = await _bridge(Answer(text="sounds fine"))("Bash", {"command": "ls"}, None)
+
+    assert isinstance(result, PermissionResultDeny)
+
+
 @pytest.mark.asyncio
 async def test_launch_without_init_message_fails_cleanly(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
