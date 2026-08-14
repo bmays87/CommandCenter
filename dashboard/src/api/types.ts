@@ -3,10 +3,14 @@
 import type { components } from "./schema";
 
 export type Session = components["schemas"]["Session"];
+export type AdapterInfo = components["schemas"]["AdapterInfo"];
+export type ModelInfo = components["schemas"]["ModelInfo"];
 export type ProdeoEvent = components["schemas"]["Event"];
 export type SessionState = Session["state"];
 export type Interaction = components["schemas"]["Interaction"];
 export type AnswerRequest = components["schemas"]["AnswerRequest"];
+export type QuestionGroup = components["schemas"]["QuestionGroup"];
+export type QuestionOption = components["schemas"]["QuestionOption"];
 export type LaunchRequest = components["schemas"]["LaunchRequest"];
 export type ExtensionSummary = components["schemas"]["ExtensionSummary"];
 export type ExtensionDetail = components["schemas"]["ExtensionDetail"];

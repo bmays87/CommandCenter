@@ -110,12 +110,19 @@ without knowing what Piper is.
 
 ### 6. The paid tier is a placeholder, and is labelled as one
 
-Catalog entries carry `tier` (`bundled`/`free`/`paid`); Mjölnir is `paid`, and
-installing it without a licence key returns **402 Payment Required**. The check
-is presence of a non-empty key and *nothing more*. It is a real, testable
-behaviour confined to one method, so a verified entitlement replaces it without
-touching anything else — but it is **not a security control** and must never be
-described as one. Anyone who can edit `extensions.json` bypasses it.
+> **Amended 2026-08-10.** Mjölnir is now `free`, not `paid` — the voice client
+> is part of the open-source project and gating it discouraged contributors.
+> The paid-tier *mechanism* described below is retained (nothing in the bundled
+> catalog uses it today); it stays as the shape a future paid extension would
+> take. The historical text stands as the record of that decision.
+
+Catalog entries carry `tier` (`bundled`/`free`/`paid`); Mjölnir was `paid`, and
+installing a paid extension without a licence key returns **402 Payment
+Required**. The check is presence of a non-empty key and *nothing more*. It is a
+real, testable behaviour confined to one method, so a verified entitlement
+replaces it without touching anything else — but it is **not a security
+control** and must never be described as one. Anyone who can edit
+`extensions.json` bypasses it.
 
 This is the kind of speculative seam the house rules forbid ("speculative seams
 are against the house rules" — the scheduler plugin kind was removed for exactly

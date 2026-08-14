@@ -19,6 +19,7 @@ from prodeo.adapters import (
     AdapterMetadata,
     InteractionRef,
     LaunchSpec,
+    ModelInfo,
     ObserveOnlyAdapter,
     SessionRef,
 )
@@ -31,6 +32,8 @@ from prodeo.mediation import (
     InteractionRequest,
     InteractionStatus,
     MediationService,
+    QuestionGroup,
+    QuestionOption,
 )
 from prodeo.persistence import EventRecorder, SqliteEventStore
 from prodeo.presence import PresenceTracker
@@ -44,7 +47,14 @@ class FakeControlAdapter(ObserveOnlyAdapter):
     """Minimal control-capable adapter for exercising the command routes."""
 
     def __init__(self) -> None:
-        self.metadata = AdapterMetadata(name="fake", version="0.0.1")
+        self.metadata = AdapterMetadata(
+            name="fake",
+            version="0.0.1",
+            models=[
+                ModelInfo(id="sonnet", label="Sonnet", default=True),
+                ModelInfo(id="fable", label="Fable"),
+            ],
+        )
         self.capabilities = AdapterCapabilities(
             launch=True,
             terminate=True,
@@ -154,6 +164,19 @@ async def test_health_is_open_and_reports_identity(env: Env) -> None:
     body = resp.json()
     assert body["status"] == "ok"
     assert body["node"] == "test-node"
+
+
+@pytest.mark.asyncio
+async def test_adapters_lists_started_adapters_with_models(env: Env) -> None:
+    resp = await env.client.get("/api/adapters")
+    assert resp.status_code == 200
+    adapters = resp.json()["adapters"]
+    assert [a["name"] for a in adapters] == ["fake"]
+    assert adapters[0]["capabilities"]["launch"] is True
+    assert adapters[0]["models"] == [
+        {"id": "sonnet", "label": "Sonnet", "default": True},
+        {"id": "fable", "label": "Fable", "default": False},
+    ]
 
 
 @pytest.mark.asyncio
@@ -280,6 +303,59 @@ async def test_answer_interaction_first_wins_then_409(env: Env) -> None:
 
     missing = await env.client.post("/api/interactions/nope/answer", json={"decision": "allow"})
     assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_question_with_selections_round_trips(env: Env) -> None:
+    """Structured questions (ADR-0022): groups surface in the listing and a
+    ``selections`` answer reaches the adapter intact."""
+    session = await env.registry.upsert_discovered("fake", SessionDescriptor(native_id="n1"))
+
+    async def deliver(interaction: Interaction, answer: Answer) -> None:
+        ref = InteractionRef(
+            adapter="fake",
+            session_native_id="n1",
+            interaction_id=interaction.id,
+            native_id="tool-q",
+        )
+        await env.adapter.respond(ref, answer)
+
+    interaction = await env.mediation.open(
+        InteractionRequest(
+            session_id=session.id,
+            adapter="fake",
+            native_id="tool-q",
+            kind=InteractionKind.QUESTION,
+            title="Which way? (+1 more)",
+            questions=[
+                QuestionGroup(
+                    id="Which way?",
+                    prompt="Which way?",
+                    options=[QuestionOption(label="Left"), QuestionOption(label="Right")],
+                ),
+                QuestionGroup(
+                    id="Which extras?",
+                    prompt="Which extras?",
+                    options=[QuestionOption(label="A"), QuestionOption(label="B")],
+                    multi_select=True,
+                ),
+            ],
+        ),
+        deliver,
+    )
+
+    listed = (await env.client.get("/api/interactions")).json()["interactions"][0]
+    assert [g["id"] for g in listed["questions"]] == ["Which way?", "Which extras?"]
+    assert listed["questions"][1]["multi_select"] is True
+
+    selections = {"Which way?": ["Left"], "Which extras?": ["A", "B"]}
+    resp = await env.client.post(
+        f"/api/interactions/{interaction.id}/answer", json={"selections": selections}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["answer"]["selections"] == selections
+    (_ref, delivered) = env.adapter.responses[0]
+    assert delivered.selections == selections
 
 
 def _external_payload(**overrides: object) -> dict[str, object]:

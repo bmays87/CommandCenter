@@ -53,6 +53,24 @@ function EventRow({ event }: { event: ProdeoEvent }) {
           </span>
         </div>
       );
+    case "session.updated": {
+      // Descriptive change (model, title, permission mode, metadata): render
+      // the new values of the fields the payload names.
+      const fields = Array.isArray(payload["fields"]) ? (payload["fields"] as string[]) : [];
+      const session = (payload["session"] ?? {}) as Record<string, unknown>;
+      const parts = fields.map((f) => {
+        const value = session[f];
+        const shown =
+          typeof value === "string" && value ? value : f === "metadata" ? "changed" : "(default)";
+        return `${f.replace(/_/g, " ")} → ${shown}`;
+      });
+      return (
+        <div className="event state">
+          {ts}
+          <span>{parts.length > 0 ? parts.join(", ") : "session updated"}</span>
+        </div>
+      );
+    }
     case "agent.turn_started":
     case "agent.turn_completed":
       return (

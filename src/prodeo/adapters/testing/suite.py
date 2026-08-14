@@ -80,6 +80,15 @@ class AdapterConformanceSuite:
     def test_observe_capability_is_always_true(self, adapter: AgentAdapter) -> None:
         assert adapter.capabilities.observe is True
 
+    def test_declared_models_are_valid(self, adapter: AgentAdapter) -> None:
+        """The model catalog (possibly empty) is well-formed: non-empty unique
+        ids and at most one default."""
+        models = adapter.metadata.models
+        assert all(m.id for m in models), "every declared model needs a non-empty id"
+        ids = [m.id for m in models]
+        assert len(ids) == len(set(ids)), "model ids must be unique"
+        assert sum(1 for m in models if m.default) <= 1, "at most one default model"
+
     @pytest.mark.asyncio
     async def test_lifecycle_start_stop_is_clean_and_stop_is_idempotent(
         self, adapter: AgentAdapter, tmp_path: Path, adapter_config: dict[str, Any]

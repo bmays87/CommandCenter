@@ -3,6 +3,9 @@
 - **Status**: Accepted
 - **Date**: 2026-08-10
 - **Extends**: ADR-0011 (permission-hook mediation), ADR-0008 (SDK control)
+- **Amended by**: ADR-0022 (the §1 "v1 limitation" — multi-question and
+  multi-select falling back to permission — is lifted; they are structured
+  questions now)
 
 ## Context
 

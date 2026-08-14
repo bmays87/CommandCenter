@@ -9,6 +9,7 @@ from prodeo_mjolnir.intents import (
     HelpIntent,
     Intent,
     IntentRouter,
+    LaunchIntent,
     OvernightIntent,
     PendingIntent,
     RespondIntent,
@@ -150,6 +151,42 @@ async def test_respond_free_text(text: str, intent: Intent) -> None:
 @pytest.mark.asyncio
 async def test_stop_targets(text: str, intent: Intent) -> None:
     assert await router.route(text) == intent
+
+
+@pytest.mark.parametrize(
+    ("text", "intent"),
+    [
+        (
+            "start a session on CommandCenter to fix the login bug",
+            LaunchIntent(project="commandcenter", prompt="fix the login bug"),
+        ),
+        (
+            "launch an agent on the paintball app to add scoring",
+            LaunchIntent(project="paintball app", prompt="add scoring"),
+        ),
+        ("spin up a session", LaunchIntent()),
+        ("kick off a new run on api-tests", LaunchIntent(project="api-tests")),
+        (
+            "start a session and have it update the dependencies",
+            LaunchIntent(prompt="update the dependencies"),
+        ),
+        (
+            "have an agent fix the flaky tests on CommandCenter",
+            LaunchIntent(project="commandcenter", prompt="fix the flaky tests"),
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_launch_phrasings(text: str, intent: Intent) -> None:
+    assert await router.route(text) == intent
+
+
+@pytest.mark.asyncio
+async def test_launch_never_swallows_stop_or_approve() -> None:
+    # the launch grammar sits before approve/deny; make sure it stays greedy
+    # only for launch verbs
+    assert await router.route("stop it") == StopIntent()
+    assert await router.route("approve it") == ApproveIntent()
 
 
 @pytest.mark.asyncio

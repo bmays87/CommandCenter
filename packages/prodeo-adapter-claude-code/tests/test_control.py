@@ -183,6 +183,32 @@ async def test_permission_bridges_to_interaction_and_respond_resolves(harness: H
 
 
 @pytest.mark.asyncio
+async def test_descriptors_assert_controlled_truthfully(tmp_path: Path) -> None:
+    """``controlled`` is asserted on every descriptor: true only while this
+    adapter instance owns the session; a restart (fresh instance) reports
+    false for a previously-owned transcript, overwriting the stale flag."""
+    observed_id = "99999999-8888-7777-6666-555555555555"
+    harness = Harness(tmp_path)
+    await harness.start()
+    await harness.adapter.launch(LaunchSpec(project="/p", prompt="go"))
+    project = harness.projects / "f--p"
+    project.mkdir(parents=True)
+    (project / f"{SESSION_ID}.jsonl").write_text("", encoding="utf-8")
+    (project / f"{observed_id}.jsonl").write_text("", encoding="utf-8")
+
+    by_id = {d.native_id: d for d in await harness.adapter.discover_sessions()}
+    assert by_id[SESSION_ID].metadata["controlled"] == "true"
+    assert by_id[observed_id].metadata["controlled"] == "false"
+    await harness.adapter.stop()
+
+    restarted = Harness(tmp_path)  # fresh instance: the owned set is empty
+    await restarted.start()
+    by_id = {d.native_id: d for d in await restarted.adapter.discover_sessions()}
+    assert by_id[SESSION_ID].metadata["controlled"] == "false"
+    await restarted.adapter.stop()
+
+
+@pytest.mark.asyncio
 async def test_respond_to_unknown_interaction_raises(harness: Harness) -> None:
     await harness.start()
     await harness.adapter.launch(LaunchSpec(prompt="go"))
@@ -425,6 +451,54 @@ async def test_text_answer_on_an_ordinary_tool_still_denies() -> None:
     result = await _bridge(Answer(text="sounds fine"))("Bash", {"command": "ls"}, None)
 
     assert isinstance(result, PermissionResultDeny)
+
+
+MULTI_QUESTION_INPUT: dict[str, Any] = {
+    "questions": [
+        QUESTION_INPUT["questions"][0],
+        {
+            "question": "Which features do you want?",
+            "multiSelect": True,
+            "options": [
+                {"label": "Fast boot"},
+                {"label": "Dark mode"},
+            ],
+        },
+    ]
+}
+
+
+@pytest.mark.asyncio
+async def test_question_selections_become_allow_with_merged_answers() -> None:
+    """A structured dashboard answer (ADR-0022) arrives as ``selections``;
+    the bridge maps every group - multiSelect joined with ", "."""
+    from claude_agent_sdk import PermissionResultAllow
+
+    answer = Answer(
+        selections={
+            "Which approach should we take?": ["Option 2"],
+            "Which features do you want?": ["Fast boot", "Dark mode"],
+        }
+    )
+    result = await _bridge(answer)("AskUserQuestion", dict(MULTI_QUESTION_INPUT), None)
+
+    assert isinstance(result, PermissionResultAllow)
+    assert result.updated_input is not None
+    assert result.updated_input["answers"] == {
+        "Which approach should we take?": "Option 2",
+        "Which features do you want?": "Fast boot, Dark mode",
+    }
+
+
+@pytest.mark.asyncio
+async def test_bad_selections_deny_rather_than_fabricate() -> None:
+    from claude_agent_sdk import PermissionResultDeny
+
+    answer = Answer(selections={"Which approach should we take?": ["Option 9"]})
+    result = await _bridge(answer)("AskUserQuestion", dict(MULTI_QUESTION_INPUT), None)
+
+    assert isinstance(result, PermissionResultDeny)
+    assert "selections did not match" in result.message
 
 
 @pytest.mark.asyncio

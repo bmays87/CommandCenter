@@ -23,7 +23,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from prodeo.adapters.context import AdapterContext
 from prodeo.adapters.interface import (
@@ -31,6 +31,7 @@ from prodeo.adapters.interface import (
     AdapterMetadata,
     InteractionRef,
     LaunchSpec,
+    ModelInfo,
     ObserveOnlyAdapter,
     SessionRef,
 )
@@ -49,6 +50,17 @@ from prodeo_adapter_claude_code.parser import TranscriptParser
 
 VERSION = "0.5.0"
 
+#: Declared model catalog. Ids are Claude Code aliases; free-form ids (full
+#: model names) remain legal everywhere a model is accepted. Declared even
+#: for observe-only builds — clients gate the *controls* on capabilities,
+#: not the catalog.
+MODELS: Final = [
+    ModelInfo(id="sonnet", label="Sonnet", default=True),
+    ModelInfo(id="opus", label="Opus"),
+    ModelInfo(id="haiku", label="Haiku"),
+    ModelInfo(id="fable", label="Fable"),
+]
+
 _PEEK_BYTES = 64 * 1024  # how much of a transcript discovery reads for metadata
 
 
@@ -64,7 +76,7 @@ class ClaudeCodeAdapter(ObserveOnlyAdapter):
     """Claude Code adapter: transcript observation + SDK control."""
 
     def __init__(self, client_factory: ClientFactory | None = None) -> None:
-        self.metadata = AdapterMetadata(name="claude-code", version=VERSION)
+        self.metadata = AdapterMetadata(name="claude-code", version=VERSION, models=MODELS)
         control = client_factory is not None or sdk_available()
         self.capabilities = AdapterCapabilities(
             observe=True,
@@ -189,15 +201,16 @@ class ClaudeCodeAdapter(ObserveOnlyAdapter):
         self, native_id: str, interaction_native_id: str, tool_name: str, input_data: dict[str, Any]
     ) -> None:
         assert self._ctx is not None
-        kind, title, body, options = interaction_content(tool_name, input_data)
+        content = interaction_content(tool_name, input_data)
         await self._ctx.report(
             InteractionObservation(
                 native_id=native_id,
                 interaction_native_id=interaction_native_id,
-                kind=InteractionKind(kind),
-                title=title,
-                body=body,
-                options=options,
+                kind=InteractionKind(content.kind),
+                title=content.title,
+                body=content.body,
+                options=content.options,
+                questions=content.questions,
                 timeout_s=self._permission_timeout_s,
             )
         )
@@ -270,6 +283,20 @@ class ClaudeCodeAdapter(ObserveOnlyAdapter):
         meta = parser.meta
         idle = time.time() - mtime
         state = SessionState.RUNNING if idle < self._idle_timeout else SessionState.COMPLETED
+        metadata = {
+            k: v
+            for k, v in {
+                "git_branch": meta.git_branch,
+                "agent_version": meta.agent_version,
+                "transcript": str(path),
+            }.items()
+            if v
+        }
+        # Asserted on every descriptor (well-known key, see the adapter spec):
+        # "this adapter instance can control this session right now". After a
+        # server restart the owned set is empty, so the first discovery pass
+        # overwrites the stale launch-time ``true`` on rebuilt sessions.
+        metadata["controlled"] = "true" if native_id in self._owned else "false"
         return SessionDescriptor(
             native_id=native_id,
             title=meta.title,
@@ -277,15 +304,7 @@ class ClaudeCodeAdapter(ObserveOnlyAdapter):
             model=meta.model or None,
             state=state,
             last_activity_at=datetime.fromtimestamp(mtime, tz=UTC),
-            metadata={
-                k: v
-                for k, v in {
-                    "git_branch": meta.git_branch,
-                    "agent_version": meta.agent_version,
-                    "transcript": str(path),
-                }.items()
-                if v
-            },
+            metadata=metadata,
         )
 
     # --------------------------------------------------------------- watch

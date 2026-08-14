@@ -9,17 +9,30 @@ Aider, or OpenHands — it manages them.
 
 ## Status
 
-**Phase 4 — Voice.** Claude Code, Aider, and Codex CLI sessions are
-supervised side by side; permission requests are answered from the dashboard,
-phone, or **out loud** — the Mjölnir voice client
-([prodeo-mjolnir](packages/prodeo-mjolnir/)) wakes on its name, answers
-"what happened overnight?", and approves permissions by voice, fully offline
-(OpenWakeWord + faster-whisper + Piper as engine plugins; Raspberry Pi
-satellite runbook in [docs/deployment/satellite-pi.md](docs/deployment/satellite-pi.md)).
-The scheduler launches agent runs unattended on cron; a daily digest
-summarizes the fleet; retention archives old events. See the
-[roadmap](docs/roadmap.md) for what each phase delivers. Start with
-[docs/vision.md](docs/vision.md) and
+**Phase 5 — Onboarding & Extensibility: complete.** Command Center is now
+installed and extended from the dashboard, not a shell ritual. The
+**extensions manager** browses a sanctioned catalog and installs, enables,
+configures, and launches plugins and apps through schema-generated forms;
+guided setup installs the **Mjölnir** voice client
+([prodeo-mjolnir](packages/prodeo-mjolnir/)) and its engines, downloads the
+models, and starts it — no hand-assembled `MJOLNIR_*` env vars. The server can
+**launch and drive** Claude Code sessions itself: start a session on a project,
+message it, switch model and permission mode live, answer its questions, and
+open the project in VS Code — all from the web UI. Mjölnir is free and
+open-source.
+
+Everything from earlier phases stands: Claude Code, Aider, and Codex CLI
+sessions supervised side by side; permission requests answered from the
+dashboard, phone, or **out loud** (Mjölnir wakes on its name, answers "what
+happened overnight?", and approves permissions by voice, fully offline —
+OpenWakeWord + faster-whisper + Piper as engine plugins; Raspberry Pi satellite
+runbook in [docs/deployment/satellite-pi.md](docs/deployment/satellite-pi.md));
+the scheduler launches agent runs unattended on cron; a daily digest summarizes
+the fleet; retention archives old events.
+
+Next is **Phase 6 — Many Machines**: a containerizable hub with a per-machine
+Command Center Agent Node (CCAN). See the [roadmap](docs/roadmap.md) for what
+each phase delivers. Start with [docs/vision.md](docs/vision.md) and
 [docs/architecture/overview.md](docs/architecture/overview.md).
 
 ## Quickstart
@@ -75,4 +88,5 @@ stream at `/api/ws/events`; interactive docs at `/docs`.
 
 ## License
 
-Apache-2.0 (proposed — see ADR-0006).
+[Apache-2.0](LICENSE) — core and all first-party plugins (ADR-0006). The
+"Prodeo Command Center" name is retained as a trademark.

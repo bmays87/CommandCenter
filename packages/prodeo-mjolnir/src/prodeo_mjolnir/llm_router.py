@@ -24,6 +24,7 @@ from prodeo_mjolnir.intents import (
     DenyIntent,
     HelpIntent,
     Intent,
+    LaunchIntent,
     OvernightIntent,
     PendingIntent,
     Router,
@@ -50,16 +51,21 @@ _WITH_TARGET: dict[str, type[Intent]] = {
     "deny": DenyIntent,
     "stop": StopIntent,
 }
+#: Two-slot intents (ADR-0023): ``target`` names the project, ``text`` carries
+#: the task. Still only a *naming* - launches execute confirm-first.
+_TWO_SLOT = {"launch"}
 #: Every intent name the classifier is allowed to know about.
-_KNOWN = _NO_TARGET.keys() | _WITH_TARGET.keys()
+_KNOWN = _NO_TARGET.keys() | _WITH_TARGET.keys() | _TWO_SLOT
 
 _SYSTEM_PROMPT = (
     "You are the intent classifier for a voice assistant that oversees coding "
     "agents. Map the user's utterance to exactly one intent from this set: {intents}. "
     'Reply with ONLY a JSON object, no prose: {{"intent": "<one of the intents or '
-    'unknown>", "target": "<optional free-text naming which session or request, '
-    'else empty>"}}. Never invent an id. If the utterance does not clearly match one '
-    'of the listed intents, answer {{"intent": "unknown", "target": ""}}.'
+    'unknown>", "target": "<optional free-text naming which session, project, or '
+    'request, else empty>", "text": "<for launch: what the new agent should do; '
+    'for everything else: empty>"}}. Never invent an id. If the utterance does not '
+    'clearly match one of the listed intents, answer {{"intent": "unknown", '
+    '"target": "", "text": ""}}.'
 )
 
 _JSON_OBJECT = re.compile(r"\{.*\}", re.DOTALL)
@@ -134,6 +140,8 @@ class LlmIntentRouter:
         target = _clean_target(str(obj.get("target", "")))
         if name not in self._allowed:
             return self._unknown(original)
+        if name in _TWO_SLOT:
+            return LaunchIntent(project=target, prompt=str(obj.get("text", "")).strip())
         if name in _WITH_TARGET:
             return _WITH_TARGET[name](target=target)  # type: ignore[call-arg]
         return _NO_TARGET[name]()

@@ -78,8 +78,8 @@
       "client"
     ],
     "package": "prodeo-mjolnir[audio]",
-    "tier": "paid",
-    "tier_note": "Mjolnir is a paid extension. Add your licence key under Model storage settings to install it."
+    "tier": "free",
+    "tier_note": "Free and open-source. Installs the voice client and its audio dependencies; choose a models directory first for the speech and voice downloads."
   },
   {
     "name": "openwakeword",

@@ -7,13 +7,14 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 
+from prodeo.adapters import AdapterCapabilities, AdapterInfo
 from prodeo.events import Event, new_event
-from prodeo.mediation import Interaction, InteractionKind
+from prodeo.mediation import Interaction, InteractionKind, QuestionGroup
 from prodeo.sessions import Session, SessionState
 from prodeo_mjolnir.cache import LocalCache
 from prodeo_mjolnir.client import ServerClient
 from prodeo_mjolnir.engines import SAMPLE_RATE, AudioClip
-from prodeo_mjolnir.errors import AlreadyResolvedError
+from prodeo_mjolnir.errors import AlreadyResolvedError, ServerRequestError
 
 FRAME_MS = 80
 FRAME_SAMPLES = SAMPLE_RATE * FRAME_MS // 1000
@@ -61,17 +62,26 @@ def make_interaction(
     title: str,
     adapter: str = "claude-code",
     body: str = "",
+    kind: InteractionKind = InteractionKind.PERMISSION,
+    options: list[str] | None = None,
+    questions: list[QuestionGroup] | None = None,
 ) -> Interaction:
     return Interaction(
         id=id_,
         session_id=session_id,
         adapter=adapter,
         native_id=f"tool-{id_}",
-        kind=InteractionKind.PERMISSION,
+        kind=kind,
         title=title,
         body=body,
+        options=options or [],
+        questions=questions or [],
         requested_at=datetime.now(UTC),
     )
+
+
+def make_adapter_info(name: str = "claude-code", *, launch: bool = True) -> AdapterInfo:
+    return AdapterInfo(name=name, version="0.0.1", capabilities=AdapterCapabilities(launch=launch))
 
 
 class FakeServerClient:
@@ -81,10 +91,13 @@ class FakeServerClient:
         self.client_id = "mjolnir-test"
         self.sessions: list[Session] = []
         self.interactions: list[Interaction] = []
+        self.adapters: list[AdapterInfo] = [make_adapter_info()]
         self.already_resolved: set[str] = set()
         self.answered: list[tuple[str, str | None]] = []
         self.answered_text: list[tuple[str, str]] = []
         self.terminated: list[str] = []
+        self.launched: list[dict[str, str]] = []
+        self.launch_error = ""
         self.voice_events: list[Event] = []
         self.presence_reports: list[bool] = []
         self.presence_forgotten = False
@@ -97,6 +110,9 @@ class FakeServerClient:
 
     async def list_pending_interactions(self) -> list[Interaction]:
         return list(self.interactions)
+
+    async def list_adapters(self) -> list[AdapterInfo]:
+        return list(self.adapters)
 
     # -- commands
 
@@ -116,6 +132,12 @@ class FakeServerClient:
 
     async def terminate(self, session_id: str) -> None:
         self.terminated.append(session_id)
+
+    async def launch(self, *, adapter: str, project: str, prompt: str) -> Session:
+        if self.launch_error:
+            raise ServerRequestError(self.launch_error)
+        self.launched.append({"adapter": adapter, "project": project, "prompt": prompt})
+        return make_session(f"launched-{len(self.launched)}", project=project)
 
     # -- reporting
 
@@ -241,6 +263,30 @@ class ScriptedSource:
 
     async def stream(self) -> AsyncIterator[bytes]:
         for item in self.frames:
+            yield item
+            await asyncio.sleep(0)
+
+
+class PushSource:
+    """A source the test feeds frame-by-frame, so events (notifications) can
+    be interleaved with mic input at controlled points."""
+
+    def __init__(self) -> None:
+        self._queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+
+    @property
+    def sample_rate(self) -> int:
+        return SAMPLE_RATE
+
+    def push(self, *frames: bytes) -> None:
+        for item in frames:
+            self._queue.put_nowait(item)
+
+    def close(self) -> None:
+        self._queue.put_nowait(None)
+
+    async def stream(self) -> AsyncIterator[bytes]:
+        while (item := await self._queue.get()) is not None:
             yield item
             await asyncio.sleep(0)
 

@@ -110,6 +110,57 @@ speaker→mic and self-trigger the wake word. After every spoken response Mjöln
 drains those buffered frames, resets the wake detector, and mutes wake scoring
 for `MJOLNIR_ECHO_COOLDOWN_S` (default 0.4 s) so it cannot hear itself.
 
+## Follow-up listening and dialogs (ADR-0023)
+
+The mic has three modes, owned by the pipeline:
+
+1. **Wake-gated** (default): frames are scored for the wake word only.
+2. **Follow-up window**: after Mjölnir speaks something that *invites a
+   reply* — a clarifying question, a launch confirmation, or a permission/
+   question announcement — the next utterance is captured directly for
+   `MJOLNIR_FOLLOWUP_WINDOW_S` (default 8 s): no wake word, no ack, same
+   exchange `correlation_id` (so a correlation chain may begin at
+   `voice.command_received` with no preceding `voice.wake_word_detected`).
+   Silence in the window is a declined invitation, not an error: Mjölnir says
+   nothing and returns to wake-gated mode.
+3. **Capture**: an endpointer is collecting one utterance.
+
+**Ordering rule (load-bearing):** the echo-cooldown check runs *before* the
+follow-up check, and the window is anchored *after* `mute_until` — capture can
+never open while TTS tail may still be in the mic buffer, so Mjölnir cannot
+answer its own question.
+
+Conversation semantics live in the handlers as a **dialog slot** (TTL
+`MJOLNIR_DIALOG_TTL_S`, default 90 s): a pending clarification consumes the
+next utterance before intent routing. Dialog kinds:
+
+- **Choose** — an ambiguous target ("approve api" matching two requests) no
+  longer dead-ends: Mjölnir reads the candidates with ordinals and the reply
+  ("two", "the first one", the name) picks one. While a choose dialog is
+  pending, ordinals bind to *its* list, never to the last pending readout; a
+  reply contradicting the action ("deny number two" mid-approve) is re-routed
+  as a fresh intent instead of mis-executing. Still ambiguous → one re-ask,
+  then cancel.
+- **Slot-filling + confirm-first launch** — "start a session on X to do Y"
+  fills missing slots by asking (project, then task), resolves the adapter
+  from `GET /api/adapters` (config override `MJOLNIR_LAUNCH_ADAPTER`; several
+  launch-capable adapters → a choose dialog), then reads the launch back.
+  **A launch executes only on an explicit spoken yes** — a "no" cancels, and
+  anything else routes as a fresh intent, never a launch. Voice launches are
+  restricted to projects already seen in session history (dictating a
+  filesystem path by voice is not viable; start new projects once from the
+  dashboard).
+- **Announced-question context** — after announcing a question interaction,
+  the follow-up utterance is matched against its options (exact, unique
+  containment, ordinal) and posted as the answer. Routing stays normal-first:
+  approve/deny/respond intents work as always; only an utterance no intent
+  matched is tried against the options, and one matching nothing falls
+  through to grounded QA (preserving ADR-0018's order). Multi-part or
+  multi-select questions are pointed at the dashboard (`needs_dashboard`) —
+  one utterance cannot answer them (ADR-0022).
+
+Cancel phrases ("never mind", "cancel") always clear a dialog.
+
 ## Persona
 
 Mjölnir has a configurable persona, designed in from day one rather than

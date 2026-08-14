@@ -6,6 +6,8 @@ from prodeo.mediation.model import (
     InteractionKind,
     InteractionRequest,
     InteractionStatus,
+    QuestionGroup,
+    QuestionOption,
 )
 from prodeo.mediation.service import DeliverFn, MediationService
 
@@ -17,4 +19,6 @@ __all__ = [
     "InteractionRequest",
     "InteractionStatus",
     "MediationService",
+    "QuestionGroup",
+    "QuestionOption",
 ]

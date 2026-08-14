@@ -109,6 +109,7 @@ class MediationService:
             title=request.title,
             body=request.body,
             options=list(request.options),
+            questions=list(request.questions),
             requested_at=now,
             timeout_at=now + timedelta(seconds=timeout_s) if timeout_s is not None else None,
         )

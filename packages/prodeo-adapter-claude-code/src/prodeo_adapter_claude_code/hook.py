@@ -31,6 +31,7 @@ from prodeo_adapter_claude_code.format import (
     QUESTION_TOOL,
     interaction_content,
     question_updated_input,
+    questions_updated_input,
 )
 from prodeo_adapter_claude_code.presence import SinceInputFn, seconds_since_input
 
@@ -110,6 +111,13 @@ def decision_output(
             "behavior": "deny",
             "message": str(answer.get("text") or "denied via Command Center"),
         }
+    elif tool_name == QUESTION_TOOL and isinstance(answer.get("selections"), dict):
+        # Structured selections (ADR-0022); a mismatch falls through rather
+        # than fabricating a choice.
+        updated = questions_updated_input(tool_input or {}, answer["selections"])
+        if updated is None:
+            return None
+        decision = {"behavior": "allow", "updatedInput": updated}
     elif tool_name == QUESTION_TOOL and answer.get("text"):
         updated = question_updated_input(tool_input or {}, str(answer["text"]))
         if updated is None:
@@ -166,14 +174,15 @@ def _run(
     timeout_s = _env_float(env, "PRODEO_HOOK_TIMEOUT_S", DEFAULT_TIMEOUT_S)
     tool_name = str(request["tool_name"])
     tool_input = dict(request["tool_input"])
-    kind, title, body, options = interaction_content(tool_name, tool_input)
+    content = interaction_content(tool_name, tool_input)
     payload = {
         "adapter": ADAPTER,
         "session_native_id": request["session_id"],
-        "kind": kind,
-        "title": title,
-        "body": body,
-        "options": options,
+        "kind": content.kind,
+        "title": content.title,
+        "body": content.body,
+        "options": content.options,
+        "questions": [group.model_dump() for group in content.questions],
         "native_id": f"hook-{ULID()}",
         "timeout_s": timeout_s,
     }

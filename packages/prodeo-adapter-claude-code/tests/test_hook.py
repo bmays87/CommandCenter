@@ -155,6 +155,83 @@ def test_question_is_submitted_as_question_kind_with_options() -> None:
     assert sent["title"] == "Which approach should we take?"
     assert sent["options"] == ["Option 1 (Recommended)", "Option 2"]
     assert "1. Option 1 (Recommended) — The safe path" in sent["body"]
+    # The structured groups travel too (ADR-0022) - the dashboard's real form.
+    (group,) = sent["questions"]
+    assert group["id"] == "Which approach should we take?"
+    assert group["multi_select"] is False
+    assert [o["label"] for o in group["options"]] == ["Option 1 (Recommended)", "Option 2"]
+
+
+MULTI_QUESTION_INPUT = {
+    "questions": [
+        QUESTION_INPUT["questions"][0],
+        {
+            "question": "Which features do you want?",
+            "header": "Features",
+            "multiSelect": True,
+            "options": [{"label": "Fast boot"}, {"label": "Dark mode"}],
+        },
+    ]
+}
+
+
+def test_multi_question_is_submitted_as_question_kind_with_groups() -> None:
+    requests: list[httpx.Request] = []
+    transport = transport_returning(resolution(status="timed_out"), requests)
+
+    code, _ = run_hook(
+        stdin_payload(tool_name="AskUserQuestion", tool_input=dict(MULTI_QUESTION_INPUT)),
+        transport,
+    )
+
+    assert code == 0
+    sent = json.loads(requests[0].content)
+    assert sent["kind"] == "question"  # no longer a raw-JSON permission
+    assert sent["title"] == "Which approach should we take? (+1 more)"
+    assert sent["options"] == []  # flat labels are single-single only
+    assert [g["id"] for g in sent["questions"]] == [
+        "Which approach should we take?",
+        "Which features do you want?",
+    ]
+    assert sent["questions"][1]["multi_select"] is True
+
+
+def test_question_answered_with_selections_becomes_allow_with_updated_input() -> None:
+    transport = transport_returning(
+        resolution(
+            answer={
+                "selections": {
+                    "Which approach should we take?": ["Option 2"],
+                    "Which features do you want?": ["Fast boot", "Dark mode"],
+                }
+            }
+        ),
+        [],
+    )
+
+    code, out = run_hook(
+        stdin_payload(tool_name="AskUserQuestion", tool_input=dict(MULTI_QUESTION_INPUT)),
+        transport,
+    )
+
+    assert code == 0
+    decision = json.loads(out)["hookSpecificOutput"]["decision"]
+    assert decision["behavior"] == "allow"
+    assert decision["updatedInput"]["answers"] == {
+        "Which approach should we take?": "Option 2",
+        "Which features do you want?": "Fast boot, Dark mode",
+    }
+
+
+def test_unmatched_selections_fall_through() -> None:
+    transport = transport_returning(
+        resolution(answer={"selections": {"Which approach should we take?": ["Option 9"]}}), []
+    )
+    code, out = run_hook(
+        stdin_payload(tool_name="AskUserQuestion", tool_input=dict(MULTI_QUESTION_INPUT)),
+        transport,
+    )
+    assert (code, out) == (0, "")
 
 
 def test_question_answered_with_text_becomes_allow_with_updated_input() -> None:

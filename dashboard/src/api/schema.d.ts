@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/adapters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Adapters
+         * @description Started adapters with capabilities and declared model catalogs.
+         */
+        get: operations["list_adapters_api_adapters_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/apps": {
         parameters: {
             query?: never;
@@ -834,16 +854,106 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AdapterCapabilities
+         * @description Declared, not assumed - clients render controls from these flags.
+         */
+        AdapterCapabilities: {
+            /**
+             * Answer Questions
+             * @default false
+             */
+            answer_questions: boolean;
+            /**
+             * Historical Sessions
+             * @default false
+             */
+            historical_sessions: boolean;
+            /**
+             * Interrupt
+             * @default false
+             */
+            interrupt: boolean;
+            /**
+             * Launch
+             * @default false
+             */
+            launch: boolean;
+            /**
+             * Observe
+             * @default true
+             */
+            observe: boolean;
+            /**
+             * Report Context
+             * @default false
+             */
+            report_context: boolean;
+            /**
+             * Respond To Permissions
+             * @default false
+             */
+            respond_to_permissions: boolean;
+            /**
+             * Send Prompts
+             * @default false
+             */
+            send_prompts: boolean;
+            /**
+             * Set Model
+             * @default false
+             */
+            set_model: boolean;
+            /**
+             * Set Permission Mode
+             * @default false
+             */
+            set_permission_mode: boolean;
+            /**
+             * Terminate
+             * @default false
+             */
+            terminate: boolean;
+        };
+        /**
+         * AdapterInfo
+         * @description One loaded adapter as exposed to clients (``GET /api/adapters``).
+         *
+         *     Lives here (not in the API layer) so clients such as Mjolnir can import
+         *     the model — mirroring how ``ClientPresence`` lives in ``prodeo.presence``.
+         */
+        AdapterInfo: {
+            capabilities: components["schemas"]["AdapterCapabilities"];
+            /** Models */
+            models?: components["schemas"]["ModelInfo"][];
+            /** Name */
+            name: string;
+            /** Version */
+            version: string;
+        };
+        /**
+         * AdapterListResponse
+         * @description Loaded adapters with their capabilities and declared model catalogs.
+         */
+        AdapterListResponse: {
+            /** Adapters */
+            adapters: components["schemas"]["AdapterInfo"][];
+        };
+        /**
          * Answer
          * @description A human's resolution of an interaction.
          *
          *     Permissions use ``decision`` (optionally with ``updated_input`` to run the
-         *     tool with edited arguments); questions use ``text``. For a denied
-         *     permission, ``text`` carries the reason shown to the agent.
+         *     tool with edited arguments); questions use ``text`` (a single label or
+         *     free text) or ``selections`` (structured: group id -> chosen labels).
+         *     For a denied permission, ``text`` carries the reason shown to the agent.
          */
         Answer: {
             /** Decision */
             decision?: ("allow" | "deny") | null;
+            /** Selections */
+            selections?: {
+                [key: string]: string[];
+            } | null;
             /**
              * Text
              * @default
@@ -856,12 +966,16 @@ export interface components {
         };
         /**
          * AnswerRequest
-         * @description A human's answer: ``decision`` for permissions, ``text`` for questions
-         *     (or the deny reason).
+         * @description A human's answer: ``decision`` for permissions, ``text`` or
+         *     ``selections`` for questions (``text`` doubles as the deny reason).
          */
         AnswerRequest: {
             /** Decision */
             decision?: ("allow" | "deny") | null;
+            /** Selections */
+            selections?: {
+                [key: string]: string[];
+            } | null;
             /**
              * Text
              * @default
@@ -1552,6 +1666,8 @@ export interface components {
             native_id: string;
             /** Options */
             options?: string[];
+            /** Questions */
+            questions?: components["schemas"]["QuestionGroup"][];
             /** Session Native Id */
             session_native_id: string;
             /** Timeout S */
@@ -1579,7 +1695,7 @@ export interface components {
         HealthResponse: {
             /**
              * Boot Id
-             * @default 01KZQ8GNRA4T7SNRR39QB9608F
+             * @default 01KZT1A9SBPYKDNP4EC9N6GTQJ
              */
             boot_id: string;
             /** Node */
@@ -1641,6 +1757,8 @@ export interface components {
             native_id: string;
             /** Options */
             options?: string[];
+            /** Questions */
+            questions?: components["schemas"]["QuestionGroup"][];
             /**
              * Requested At
              * Format: date-time
@@ -1732,6 +1850,28 @@ export interface components {
             prompt: string;
         };
         /**
+         * ModelInfo
+         * @description One model an adapter can launch/switch to.
+         *
+         *     ``id`` is adapter-native (an alias or a full model id); free-form ids
+         *     remain legal at every API that accepts a model. An empty catalog means
+         *     "the adapter takes free-form ids only".
+         */
+        ModelInfo: {
+            /**
+             * Default
+             * @default false
+             */
+            default: boolean;
+            /** Id */
+            id: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+        };
+        /**
          * OpenEditorRequest
          * @description A project directory to open in the code editor, in a new window.
          */
@@ -1783,6 +1923,41 @@ export interface components {
         PromptRequest: {
             /** Prompt */
             prompt: string;
+        };
+        /**
+         * QuestionGroup
+         * @description One question in a (possibly multi-part) question-kind interaction.
+         *
+         *     Agent-agnostic: "the agent asks one or more grouped multiple-choice
+         *     questions". ``id`` is the stable key an answer's ``selections`` uses;
+         *     only the adapter that opened the interaction knows how to map selections
+         *     back to its agent's native input (ADR-0022).
+         */
+        QuestionGroup: {
+            /** Id */
+            id: string;
+            /**
+             * Multi Select
+             * @default false
+             */
+            multi_select: boolean;
+            /** Options */
+            options: components["schemas"]["QuestionOption"][];
+            /** Prompt */
+            prompt: string;
+        };
+        /**
+         * QuestionOption
+         * @description One choice offered by a structured question.
+         */
+        QuestionOption: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Label */
+            label: string;
         };
         /**
          * RestartResponse
@@ -1955,6 +2130,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_adapters_api_adapters_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdapterListResponse"];
+                };
+            };
+        };
+    };
     list_apps_api_apps_get: {
         parameters: {
             query?: never;

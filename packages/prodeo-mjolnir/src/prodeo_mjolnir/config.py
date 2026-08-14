@@ -83,7 +83,21 @@ class MjolnirSettings(BaseSettings):
         "approve",
         "deny",
         "stop",
+        # Safe in the allowlist for the same reason as approve/deny (ADR-0013):
+        # the classifier only *names* the intent; a launch executes only after
+        # an explicit spoken confirmation (ADR-0023).
+        "launch",
     ]
+
+    # Conversational flow (ADR-0023)
+    #: After speaking something that invites a reply (a question, a permission
+    #: announcement, a confirmation), listen without the wake word this long.
+    followup_window_s: float = 8.0
+    #: How long a clarification dialog (confirm/slot/choose) awaits its answer.
+    dialog_ttl_s: float = 90.0
+    #: Adapter for launch-by-voice; empty = the single launch-capable adapter
+    #: reported by ``GET /api/adapters`` (several -> Mjölnir asks which).
+    launch_adapter: str = ""
 
     # Question answering (ADR-0018)
     #: ``llm`` (default) = utterances no intent matched become grounded

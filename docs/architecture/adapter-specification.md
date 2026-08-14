@@ -67,6 +67,15 @@ agent is waiting on a human, and `InteractionClosedObservation` when the agent
 stopped waiting on its own (e.g. answered in the terminal). The manager opens a
 mediated interaction for the former; the answer arrives via `respond()`.
 
+Question-kind observations may carry structured `questions:
+list[QuestionGroup]` (ADR-0022) — one or more `{id, prompt, options[],
+multi_select}` groups — alongside the flat `options` labels (which adapters
+should populate only for the single-question single-select shape, the one a
+bare text answer can address). The human's structured reply arrives in
+`Answer.selections` (group id → chosen labels); **only the adapter maps
+selections to its agent's native input**, and it must refuse to fabricate:
+any selection matching no offered label means "no answer", never a guess.
+
 There is one seam that bypasses the adapter entirely: an *external* requester
 that is itself blocked (e.g. a Claude Code `PermissionRequest` hook) may
 submit an interaction through `POST /api/interactions/external` and long-poll
@@ -87,6 +96,46 @@ class AdapterCapabilities(BaseModel):
     set_model: bool = False
     historical_sessions: bool = False
 ```
+
+### Well-known metadata: `controlled`
+
+Descriptor metadata is free-form, but one key has agreed semantics
+(ADR-0021): `controlled` — `"true"`/`"false"` — means "this adapter
+*instance* can control this session right now". Control adapters should
+assert it on **every** descriptor (not just at launch), so that a server
+restart — after which the adapter's owned set is empty — overwrites the
+stale launch-time `true` on the first discovery pass. The core never
+computes this key, only relays it; clients use it to decide whether to
+offer session controls. Callers of `set_model` should treat the registry's
+`model` as descriptive until the adapter's own observations re-confirm it
+(a `session.updated` event corrects every client if the agent normalized
+or refused the value).
+
+### Model catalog
+
+`AdapterMetadata` carries an optional model catalog — declarations, like
+capabilities, not queries:
+
+```python
+class ModelInfo(BaseModel):
+    id: str            # adapter-native alias or full model id
+    label: str = ""    # display name; clients fall back to the id
+    default: bool = False  # at most one per catalog
+```
+
+An empty catalog means "the adapter takes free-form ids only". The catalog is
+a *hint for pickers*, never a validation list: free-form ids remain legal at
+every API that accepts a model (`LaunchSpec.model`, `set_model`). Clients gate
+the model *controls* on capabilities (`launch`, `set_model`), not on whether a
+catalog is declared, so observe-only builds may still declare one.
+
+The catalog reaches clients two ways: the `adapter.loaded` event payload
+gains a `models` field (additive, still v1), and `GET /api/adapters` returns
+every started adapter as an `AdapterInfo` (name, version, capabilities,
+models). `AdapterInfo` lives in `prodeo.adapters.interface` so non-dashboard
+clients (e.g. the voice client) can validate against the same model. The
+conformance suite checks catalog well-formedness: non-empty unique ids, at
+most one default (ADR-0021).
 
 `AdapterContext` is the only door back into the core: `ctx.report(observation)`,
 `ctx.logger`, `ctx.config`, `ctx.data_dir`. Adapters cannot publish arbitrary events;

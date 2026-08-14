@@ -4,10 +4,11 @@ import asyncio
 from pathlib import Path
 
 import pytest
+from ulid import ULID
 
 from prodeo.bus import InProcessEventBus
 from prodeo.errors import InteractionAlreadyResolvedError, UnknownInteractionError
-from prodeo.events import Event
+from prodeo.events import Event, new_event
 from prodeo.events import types as ev
 from prodeo.mediation import (
     Answer,
@@ -16,6 +17,8 @@ from prodeo.mediation import (
     InteractionRequest,
     InteractionStatus,
     MediationService,
+    QuestionGroup,
+    QuestionOption,
 )
 from prodeo.persistence import SqliteEventStore
 
@@ -276,6 +279,96 @@ async def test_rebuild_restores_history_and_cancels_orphans(
     cancels = await _drain(probe)
     assert [e.type for e in cancels] == [ev.INTERACTION_CANCELLED]
     assert cancels[0].payload["reason"] == "orphaned_by_restart"
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_questions_and_selections_survive_events_and_rebuild(
+    bus: InProcessEventBus, tmp_path: Path
+) -> None:
+    """The structured shapes (ADR-0022) are durable facts: ``questions`` on
+    ``interaction.requested``, ``selections`` on ``interaction.answered``,
+    both restored by a rebuild."""
+    store = SqliteEventStore(tmp_path / "events.db")
+    await store.open()
+    sub = bus.subscribe("*", name="recorder")
+
+    service = MediationService(bus)
+    request = _request(kind=InteractionKind.QUESTION)
+    request.questions = [
+        QuestionGroup(
+            id="Which way?",
+            prompt="Which way?",
+            options=[QuestionOption(label="Left"), QuestionOption(label="Right")],
+        ),
+        QuestionGroup(
+            id="Which extras?",
+            prompt="Which extras?",
+            options=[QuestionOption(label="A"), QuestionOption(label="B")],
+            multi_select=True,
+        ),
+    ]
+    interaction = await service.open(request, Delivered())
+    assert [g.id for g in interaction.questions] == ["Which way?", "Which extras?"]
+    await service.answer(
+        interaction.id,
+        Answer(selections={"Which way?": ["Left"], "Which extras?": ["A", "B"]}),
+    )
+    for event in await _drain(sub):
+        await store.append(event)
+
+    rebuilt = MediationService(bus)
+    await rebuilt.rebuild(store)
+
+    restored = rebuilt.get(interaction.id)
+    assert restored is not None
+    assert [g.prompt for g in restored.questions] == ["Which way?", "Which extras?"]
+    assert restored.questions[1].multi_select is True
+    assert restored.answer is not None
+    assert restored.answer.selections == {"Which way?": ["Left"], "Which extras?": ["A", "B"]}
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_old_format_requested_payload_rebuilds_cleanly(
+    bus: InProcessEventBus, tmp_path: Path
+) -> None:
+    """The explicit compat test: an ``interaction.requested`` recorded before
+    ADR-0022 (no ``questions`` field) must fold with ``questions=[]``."""
+    store = SqliteEventStore(tmp_path / "events.db")
+    await store.open()
+
+    old_id = str(ULID())
+    old_payload = {
+        "id": old_id,
+        "session_id": "sess-1",
+        "adapter": "claude-code",
+        "native_id": "tool-old",
+        "kind": "question",
+        "title": "Which approach?",
+        "body": "Which approach?\n\n1. A\n2. B",
+        "options": ["A", "B"],
+        # no "questions" key - the pre-ADR-0022 shape
+        "requested_at": "2026-01-01T00:00:00Z",
+        "status": "pending",
+    }
+    await store.append(
+        new_event(
+            ev.INTERACTION_REQUESTED,
+            node="local",
+            source="mediation",
+            session_id="sess-1",
+            payload={"interaction": old_payload},
+        )
+    )
+
+    rebuilt = MediationService(bus)
+    await rebuilt.rebuild(store)  # must not raise
+
+    restored = rebuilt.get(old_id)
+    assert restored is not None
+    assert restored.questions == []
+    assert restored.options == ["A", "B"]
     await store.close()
 
 

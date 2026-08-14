@@ -36,7 +36,7 @@ Rules:
 
 | Namespace | Events |
 |---|---|
-| `session` | `discovered`, `started`, `state_changed`, `completed`, `failed`, `stopped`, `archived` |
+| `session` | `discovered`, `updated`, `started`, `state_changed`, `completed`, `failed`, `stopped`, `archived` |
 | `agent` | `output_appended`, `turn_started`, `turn_completed` |
 | `tool` | `started`, `finished`, `failed` |
 | `interaction` | `requested`, `answered`, `timed_out`, `cancelled` |
@@ -61,11 +61,14 @@ per interaction — first answer wins; later answers are rejected (HTTP 409 at t
 API). Payloads (v1):
 
 - `interaction.requested` — `{"interaction": {id, session_id, adapter, native_id,
-  kind: "permission"|"question", title, body, options[], requested_at,
-  timeout_at?, status, ...}}` (full Interaction dump; state is rebuilt from this
-  plus the resolution events).
+  kind: "permission"|"question", title, body, options[], questions[],
+  requested_at, timeout_at?, status, ...}}` (full Interaction dump; state is
+  rebuilt from this plus the resolution events). `questions` (ADR-0022) is
+  additive-with-default — still v1; payloads recorded without it rebuild as
+  `questions: []`.
 - `interaction.answered` — `{"interaction_id", "answer": {decision?:
-  "allow"|"deny", text, updated_input?}, "answered_by"}`.
+  "allow"|"deny", text, updated_input?, selections?}, "answered_by"}`.
+  `selections` (group id → chosen labels, ADR-0022) is additive — still v1.
 - `interaction.timed_out` — `{"interaction_id"}`. A timed-out **permission** is
   auto-denied toward the agent; a timed-out question simply expires.
 - `interaction.cancelled` — `{"interaction_id", "reason"}`. Emitted when the
@@ -103,11 +106,17 @@ satellite's machine name, and all events of one exchange share a
 `correlation_id`. Payloads (v1):
 
 - `voice.wake_word_detected` — `{"wake_word", "score"}`.
-- `voice.command_received` — `{"duration_s", "heard_speech"}` (the captured
-  utterance; `heard_speech` false means the user said nothing).
+- `voice.command_received` — `{"duration_s", "heard_speech", "followup"}`
+  (the captured utterance; `heard_speech` false means the user said nothing;
+  `followup` true means it was captured in the no-wake follow-up window,
+  ADR-0023 — additive, still v1).
 - `voice.transcription_completed` — `{"text", "engine"}`.
 - `voice.speech_started` — `{"text", "engine"}` (about to speak `text`).
 - `voice.speech_finished` — `{"duration_s"}`.
+
+A follow-up exchange (ADR-0023) reuses the inviting exchange's
+`correlation_id`, so a correlation chain may begin at
+`voice.command_received` with no preceding `voice.wake_word_detected`.
 
 **Client presence is not in the event log.** Heartbeats
 (`PUT /api/presence/{client_id}`, TTL-expired, in-memory) are liveness
@@ -190,6 +199,13 @@ Two implementation notes (Phase 1):
   ("resumed"). Observe-only adapters can see a session they classified as
   finished start appending output again; treating that as a resume is more
   truthful than rejecting the observation.
+- **Descriptive facts vs state facts** (ADR-0021): `session.updated` (payload
+  `{"session": <full dump>, "fields": [...]}`) records changes to *descriptive*
+  fields — model, title, permission mode, metadata — published only when
+  something actually changed (discovery diffs before publishing). Its fold
+  copies descriptive fields only and never touches `state`/`ended_at`; state
+  authority stays with `session.state_changed`, so an update that raced a
+  transition cannot resurrect an old state during rebuild.
 
 ## Bus Semantics (v1, in-process)
 

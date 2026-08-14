@@ -1,4 +1,5 @@
 import type {
+  AdapterInfo,
   AnswerRequest,
   AppStatus,
   AssetResult,
@@ -105,6 +106,10 @@ export interface InteractionListResponse {
   pending: number;
 }
 
+export interface AdapterListResponse {
+  adapters: AdapterInfo[];
+}
+
 export interface ExtensionListResponse {
   extensions: ExtensionSummary[];
 }
@@ -124,6 +129,7 @@ export const api = {
     get<DirectoryListing>(`/api/system/browse?path=${encodeURIComponent(path)}`),
   openEditor: (path: string) =>
     post<{ opened: boolean; path: string }>("/api/system/open-editor", { path }),
+  adapters: () => get<AdapterListResponse>("/api/adapters"),
   sessions: () => get<SessionListResponse>("/api/sessions"),
   session: (id: string) => get<Session>(`/api/sessions/${id}`),
   sessionEvents: (id: string, limit = 500) =>

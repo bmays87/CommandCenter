@@ -153,20 +153,20 @@ async def test_unknown_intent_is_answered_as_a_question() -> None:
 
     spoken = await handlers.handle(UnknownIntent(text="what is an agent"))
 
-    assert spoken == "Agents are AI programming assistants working for you."
+    assert spoken.text == "Agents are AI programming assistants working for you."
     assert answers.asked == ["what is an agent"]
 
 
 async def test_empty_answer_falls_back_to_the_template() -> None:
     handlers = await _handlers(_ScriptedAnswerer(""))
     spoken = await handlers.handle(UnknownIntent(text="what is an agent"))
-    assert spoken == "Sorry, sir, I didn't understand: what is an agent."
+    assert spoken.text == "Sorry, sir, I didn't understand: what is an agent."
 
 
 async def test_without_an_engine_the_template_speaks_as_before() -> None:
     handlers = await _handlers(None)
     spoken = await handlers.handle(UnknownIntent(text="what is an agent"))
-    assert spoken == "Sorry, sir, I didn't understand: what is an agent."
+    assert spoken.text == "Sorry, sir, I didn't understand: what is an agent."
 
 
 async def test_blank_utterance_never_reaches_the_engine() -> None:
@@ -176,4 +176,4 @@ async def test_blank_utterance_never_reaches_the_engine() -> None:
     spoken = await handlers.handle(UnknownIntent(text="  "))
 
     assert answers.asked == []
-    assert "didn't understand" in spoken
+    assert "didn't understand" in spoken.text

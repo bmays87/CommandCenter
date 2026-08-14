@@ -6,7 +6,7 @@ import { isActive, type Session } from "../api/types";
 import { projectName, timeAgo } from "../format";
 import { useLiveEvents } from "../live";
 import { DirectoryPicker } from "./DirectoryPicker";
-import { ModelInput } from "./ModelInput";
+import { ModelPicker } from "./ModelPicker";
 import { ModePicker, modeLabel } from "./ModePicker";
 
 function StateBadge({ state }: { state: string }) {
@@ -24,10 +24,11 @@ function NewSessionForm({ onClose }: { onClose: () => void }) {
   const [browsing, setBrowsing] = useState(false);
   const [error, setError] = useState("");
 
-  // Adapters are plugin-class extensions; the inventory names the installed
-  // ones. The server rejects a launch on an observe-only adapter with a 400.
-  const extensions = useQuery({ queryKey: ["extensions"], queryFn: api.extensions });
-  const adapters = (extensions.data?.extensions ?? []).filter((e) => e.kind === "adapter");
+  // Started adapters with capabilities and model catalogs; only launch-capable
+  // ones are offered (an observe-only adapter cannot start a session).
+  const adaptersQuery = useQuery({ queryKey: ["adapters"], queryFn: api.adapters });
+  const adapters = (adaptersQuery.data?.adapters ?? []).filter((a) => a.capabilities.launch);
+  const selected = adapters.find((a) => a.name === adapter);
 
   const launch = useMutation({
     mutationFn: () =>
@@ -76,10 +77,10 @@ function NewSessionForm({ onClose }: { onClose: () => void }) {
       </div>
       <div className="form-row">
         <label htmlFor="ns-model">Model</label>
-        <ModelInput id="ns-model" value={model} onChange={setModel} />
+        <ModelPicker id="ns-model" value={model} onChange={setModel} models={selected?.models ?? []} />
         <p className="field-help">
-          Model alias (e.g. sonnet, opus, haiku) or full id; leave empty for the agent&apos;s
-          default.
+          Models the agent declares; pick &quot;Custom model id…&quot; for any other id, or
+          &quot;Agent default&quot; to let the agent decide.
         </p>
       </div>
       <div className="form-row">

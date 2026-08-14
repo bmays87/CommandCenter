@@ -4,10 +4,12 @@ from prodeo.adapters.context import AdapterContext
 from prodeo.adapters.interface import (
     ADAPTER_API_VERSION,
     AdapterCapabilities,
+    AdapterInfo,
     AdapterMetadata,
     AgentAdapter,
     InteractionRef,
     LaunchSpec,
+    ModelInfo,
     ObserveOnlyAdapter,
     SessionRef,
 )
@@ -29,6 +31,7 @@ __all__ = [
     "ADAPTER_API_VERSION",
     "AdapterCapabilities",
     "AdapterContext",
+    "AdapterInfo",
     "AdapterManager",
     "AdapterMetadata",
     "AgentAdapter",
@@ -36,6 +39,7 @@ __all__ = [
     "InteractionObservation",
     "InteractionRef",
     "LaunchSpec",
+    "ModelInfo",
     "Observation",
     "ObserveOnlyAdapter",
     "OutputObservation",

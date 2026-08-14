@@ -5,7 +5,10 @@ description = "Mjölnir wake word engine backed by OpenWakeWord (local, CPU-frie
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.12"
-dependencies = ["prodeo-mjolnir", "openwakeword>=0.4"]
+# <0.6: openwakeword 0.6.0 stops bundling the melspectrogram/embedding feature
+# models (requires openwakeword.utils.download_models() at runtime). Revisit the
+# cap together with a download step if an upgrade is ever needed.
+dependencies = ["prodeo-mjolnir", "openwakeword>=0.4,<0.6"]
 
 [project.entry-points."prodeo.plugins"]
 openwakeword = "prodeo_wakeword_openwakeword:manifest"

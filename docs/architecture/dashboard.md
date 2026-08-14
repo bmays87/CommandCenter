@@ -20,6 +20,12 @@ change — never a private backdoor.
 2. **Session view** — timeline of that session's events, live output tail, pending
    interactions with answer controls (rendered per adapter capabilities).
 3. **Interaction inbox** — all unanswered permissions/questions across sessions.
+   Question cards with structured `questions` (ADR-0022) render one fieldset
+   per group — radios for single-select, checkboxes for multi-select — with a
+   single Submit enabled once every group has a selection, posting generic
+   `selections`. The single-question single-select shape additionally keeps
+   the free-text row (the only shape a bare string can answer); legacy
+   interactions (no `questions`) keep the flat option-button rendering.
 4. **Event explorer** (phase 2) — filterable raw event history.
 
 ## Live Updates

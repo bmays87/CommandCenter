@@ -101,9 +101,11 @@ when `PRODEO_API_TOKEN` is unset. First-party packages are unpublished and
 depend on each other, so the server builds the workspace into a local wheel
 index and installs with `--find-links`; extensions land in
 `<PRODEO_DATA_DIR>/extensions/lib`, outside `.venv` where `uv sync` cannot
-delete them. Mjölnir is an **app-class extension on a `paid` tier** — the
-entitlement check is presence of a licence key and is explicitly a placeholder,
-not a security control. The supervisor treats a clean child exit as
+delete them. Mjölnir is an **app-class extension**, and **free** — it is part
+of the open-source project (it was briefly on a `paid` tier; that discouraged
+contributors and was reverted 2026-08-10). The paid-tier mechanism remains for
+a future paid extension: its entitlement check is presence of a licence key and
+is explicitly a placeholder, not a security control. The supervisor treats a clean child exit as
 non-terminal and gives up after five consecutive crash-loops. Model assets are
 catalog data verified by the files they *produce*, which is what catches a
 Piper voice downloaded without its `.onnx.json` sibling — the failure that

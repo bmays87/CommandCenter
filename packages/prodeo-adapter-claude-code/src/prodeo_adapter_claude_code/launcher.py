@@ -21,7 +21,11 @@ from ulid import ULID
 
 from prodeo.adapters.interface import LaunchSpec
 from prodeo.mediation.model import Answer
-from prodeo_adapter_claude_code.format import QUESTION_TOOL, question_updated_input
+from prodeo_adapter_claude_code.format import (
+    QUESTION_TOOL,
+    question_updated_input,
+    questions_updated_input,
+)
 
 #: (tool_name, tool_input) -> the human's answer. Provided by the launcher to
 #: the client factory, which adapts it to the SDK's ``can_use_tool`` types.
@@ -85,6 +89,13 @@ def default_client_factory(spec: LaunchSpec, decide: DecideFn) -> SdkClient:
         answer = await decide(tool_name, input_data)
         if answer.decision == "allow":
             return PermissionResultAllow(updated_input=answer.updated_input)
+        if answer.decision != "deny" and answer.selections and tool_name == QUESTION_TOOL:
+            # A structured answer (ADR-0022): selections map group ids to
+            # chosen labels; the mapping refuses to fabricate on any mismatch.
+            updated = questions_updated_input(input_data, answer.selections)
+            if updated is not None:
+                return PermissionResultAllow(updated_input=updated)
+            return PermissionResultDeny(message="selections did not match the offered options")
         if answer.decision != "deny" and answer.text and tool_name == QUESTION_TOOL:
             # A question answered with an option label or free text (ADR-0019):
             # deliver the selection through updatedInput. Text matching no

@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from prodeo.mediation.model import InteractionKind
+from prodeo.mediation.model import InteractionKind, QuestionGroup
 from prodeo.sessions.model import SessionDescriptor
 from prodeo.sessions.state import SessionState
 
@@ -86,6 +86,9 @@ class InteractionObservation(BaseModel):
     title: str
     body: str = ""
     options: list[str] = Field(default_factory=list)
+    #: Structured questions (question kind); empty when the adapter only
+    #: supplies flat ``options`` (or for permissions).
+    questions: list[QuestionGroup] = Field(default_factory=list)
     #: Seconds until auto-resolution; None uses the server default.
     timeout_s: float | None = None
     at: datetime | None = None

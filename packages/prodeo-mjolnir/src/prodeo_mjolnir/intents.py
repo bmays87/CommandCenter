@@ -58,6 +58,20 @@ class StopIntent:
 
 
 @dataclass(frozen=True)
+class LaunchIntent:
+    """Start a new agent session; both slots may need filling (ADR-0023).
+
+    ``project`` is a spoken hint resolved against projects already seen in
+    session history; ``prompt`` is what the agent should do. A launch only
+    ever executes after an explicit spoken confirmation - never from the
+    intent alone.
+    """
+
+    project: str = ""
+    prompt: str = ""
+
+
+@dataclass(frozen=True)
 class HelpIntent:
     """ "What can you do?"."""
 
@@ -82,6 +96,7 @@ Intent = (
     | DenyIntent
     | RespondIntent
     | StopIntent
+    | LaunchIntent
     | HelpIntent
     | CancelIntent
     | UnknownIntent
@@ -173,6 +188,21 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     ),
     (re.compile(r".*\bwhats waiting (?:on|for) me\b.*"), "pending"),
     (re.compile(r"^any(?:thing)? pending$"), "pending"),
+    # launch a new session (before approve/deny: "start a session ..." must
+    # not fall through to a stray approve/stop match)
+    (
+        re.compile(
+            r"^(?:start|launch|spin up|kick off)\s+(?:a\s+|an\s+|new\s+|a\s+new\s+)?"
+            r"(?:session|agent|run)"
+            r"(?:\s+(?:on|in|for)\s+(?P<target>.+?))?"
+            r"(?:\s+(?:to|and have it|and)\s+(?P<text>.+))?$"
+        ),
+        "launch",
+    ),
+    (
+        re.compile(r"^have\s+an?\s+agent\s+(?P<text>.+?)\s+(?:on|in)\s+(?P<target>.+)$"),
+        "launch",
+    ),
     # approve / deny by position ("approve number two", "deny the first one")
     (
         re.compile(
@@ -258,6 +288,9 @@ class IntentRouter:
             if name == "respond":
                 answer = (match.groupdict().get("text") or "").strip()
                 return RespondIntent(target=target, text=answer)
+            if name == "launch":
+                prompt = (match.groupdict().get("text") or "").strip()
+                return LaunchIntent(project=target, prompt=prompt)
             if name == "approve":
                 return ApproveIntent(target=target)
             if name == "deny":

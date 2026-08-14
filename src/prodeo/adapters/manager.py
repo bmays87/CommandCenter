@@ -16,6 +16,7 @@ import structlog
 
 from prodeo.adapters.context import AdapterContext, ReportFn
 from prodeo.adapters.interface import (
+    AdapterInfo,
     AgentAdapter,
     InteractionRef,
     LaunchSpec,
@@ -51,6 +52,7 @@ from prodeo.mediation import (
     InteractionRequest,
     InteractionStatus,
     MediationService,
+    QuestionGroup,
 )
 from prodeo.sessions import Session, SessionDescriptor, SessionRegistry
 from prodeo.sessions.state import END_STATES, SessionState
@@ -101,6 +103,21 @@ class AdapterManager:
         """Register an adapter instance (the Plugin Host, tests, embedded use)."""
         self._adapters[adapter.metadata.name] = adapter
 
+    # -------------------------------------------------------------- queries
+
+    def describe_adapters(self) -> list[AdapterInfo]:
+        """Every *started* adapter with its capabilities and model catalog."""
+        return [
+            AdapterInfo(
+                name=name,
+                version=adapter.metadata.version,
+                capabilities=adapter.capabilities,
+                models=list(adapter.metadata.models),
+            )
+            for name, adapter in self._adapters.items()
+            if name in self._started
+        ]
+
     # ----------------------------------------------------------- lifecycle
 
     async def start(self) -> None:
@@ -128,6 +145,7 @@ class AdapterManager:
                         "name": name,
                         "version": adapter.metadata.version,
                         "capabilities": adapter.capabilities.model_dump(),
+                        "models": [m.model_dump() for m in adapter.metadata.models],
                     },
                 )
             )
@@ -189,7 +207,7 @@ class AdapterManager:
         # Show the starting permission mode straight away (descriptive, like the
         # model refresh after a set_model); the launch spec is the source.
         if spec.permission_mode:
-            self._registry.refresh_permission_mode(session.id, spec.permission_mode)
+            await self._registry.refresh_permission_mode(session.id, spec.permission_mode)
         self._ensure_watch(adapter_name, adapter, ref.native_id, session.id, session.state)
         return session
 
@@ -230,7 +248,7 @@ class AdapterManager:
             raise await self._operation_failed(
                 session.adapter, "set_model", exc, session_id=session.id
             ) from exc
-        self._registry.refresh_model(session.id, model)
+        await self._registry.refresh_model(session.id, model)
 
     async def set_permission_mode(self, session_id: str, mode: str) -> None:
         """Switch how a session handles permissions through its owning adapter.
@@ -249,7 +267,7 @@ class AdapterManager:
             raise await self._operation_failed(
                 session.adapter, "set_permission_mode", exc, session_id=session.id
             ) from exc
-        self._registry.refresh_permission_mode(session.id, mode)
+        await self._registry.refresh_permission_mode(session.id, mode)
 
     async def interrupt(self, session_id: str) -> None:
         """Stop a session's current turn without ending it (keeps it usable)."""
@@ -530,6 +548,7 @@ class AdapterManager:
                 title=obs.title,
                 body=obs.body,
                 options=obs.options,
+                questions=obs.questions,
                 timeout_s=obs.timeout_s,
             ),
             deliver,
@@ -562,6 +581,7 @@ class AdapterManager:
         title: str,
         body: str = "",
         options: list[str] | None = None,
+        questions: list[QuestionGroup] | None = None,
         timeout_s: float,
     ) -> tuple[Interaction, "asyncio.Future[Interaction]"]:
         """Open an interaction on behalf of an external delivery path.
@@ -605,6 +625,7 @@ class AdapterManager:
                 title=title,
                 body=body,
                 options=list(options or []),
+                questions=list(questions or []),
                 timeout_s=timeout_s,
             ),
             deliver,

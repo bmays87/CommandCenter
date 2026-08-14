@@ -1,7 +1,7 @@
 # ADR-0006: Apache-2.0 license
 
-- **Status**: Proposed
-- **Date**: 2026-07-11
+- **Status**: Accepted
+- **Date**: 2026-07-11 (accepted 2026-08-10; `LICENSE` added at the repo root)
 
 ## Context
 Goal: become a neutral standard that companies and agent vendors will adopt and write

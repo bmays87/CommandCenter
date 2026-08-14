@@ -4,6 +4,7 @@ import { useState } from "react";
 import { api, ConflictError } from "../api/client";
 import type { AnswerRequest, Interaction } from "../api/types";
 import { timeAgo } from "../format";
+import { QuestionForm } from "./QuestionForm";
 
 /** One pending interaction with its answer controls (inbox + session view). */
 export function InteractionCard({
@@ -36,6 +37,11 @@ export function InteractionCard({
 
   const isPermission = interaction.kind === "permission";
   const busy = answer.isPending;
+  const questions = interaction.questions ?? [];
+  const structured = !isPermission && questions.length > 0;
+  // The free-text row only exists for shapes a bare string can answer:
+  // one single-select question (or a legacy interaction without questions).
+  const singleSingle = questions.length === 1 && !questions[0]?.multi_select;
 
   return (
     <div className={`interaction kind-${interaction.kind}`}>
@@ -49,8 +55,37 @@ export function InteractionCard({
           </a>
         ) : null}
       </div>
-      {interaction.body ? <pre className="interaction-body">{interaction.body}</pre> : null}
-      {isPermission ? (
+      {interaction.body && !structured ? (
+        <pre className="interaction-body">{interaction.body}</pre>
+      ) : null}
+      {structured ? (
+        <div className="interaction-actions">
+          <QuestionForm
+            questions={questions}
+            busy={busy}
+            onSubmit={(selections) => answer.mutate({ selections, text: "" })}
+          />
+          {singleSingle ? (
+            <form
+              className="interaction-answer"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (text.trim()) answer.mutate({ text: text.trim() });
+              }}
+            >
+              <input
+                className="interaction-input"
+                placeholder="or type an answer…"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+              />
+              <button className="btn approve" type="submit" disabled={busy || !text.trim()}>
+                Send
+              </button>
+            </form>
+          ) : null}
+        </div>
+      ) : isPermission ? (
         <div className="interaction-actions">
           <button
             className="btn approve"

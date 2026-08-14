@@ -55,6 +55,15 @@ async def wait_for(predicate: Any, timeout: float = 5.0) -> None:
         await asyncio.sleep(0.02)
 
 
+def test_metadata_declares_model_catalog() -> None:
+    """The adapter declares its aliases (incl. fable); sonnet is the default."""
+    adapter = create_adapter()
+    models = adapter.metadata.models
+    assert [m.id for m in models] == ["sonnet", "opus", "haiku", "fable"]
+    assert [m.id for m in models if m.default] == ["sonnet"]
+    assert all(m.label for m in models)
+
+
 @pytest.mark.asyncio
 async def test_discovery_describes_active_session(tmp_path: Path) -> None:
     projects = make_projects_dir(tmp_path)

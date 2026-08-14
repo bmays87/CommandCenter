@@ -3,8 +3,11 @@
 The registry is the *only* writer of ``session.*`` events. Adapters (via the
 Adapter Manager) hand it observations; it applies the canonical state machine
 and publishes the resulting facts. It is rebuilt from the event log on boot,
-so the in-memory catalogue is a pure fold over ``session.discovered`` and
-``session.state_changed`` events.
+so the in-memory catalogue is a pure fold over ``session.discovered``,
+``session.state_changed``, and ``session.updated`` events (the last carries
+descriptive facts only — model, title, permission mode, metadata — and its
+fold never touches ``state``; state authority stays with
+``session.state_changed``).
 
 ``last_activity_at`` is updated in memory as activity is observed; after a
 rebuild it is approximated by the timestamp of the session's last lifecycle
@@ -71,11 +74,20 @@ class SessionRegistry:
         """
         existing = self.resolve(adapter, desc.native_id)
         if existing is not None:
-            if desc.title:
+            # Diff before mutating: discovery runs on a timer, so publishing
+            # unconditionally would flood the log with no-op updates.
+            changed: list[str] = []
+            if desc.title and desc.title != existing.title:
                 existing.title = desc.title
-            if desc.model:
+                changed.append("title")
+            if desc.model and desc.model != existing.model:
                 existing.model = desc.model
-            existing.metadata.update(desc.metadata)
+                changed.append("model")
+            if any(existing.metadata.get(k) != v for k, v in desc.metadata.items()):
+                existing.metadata.update(desc.metadata)
+                changed.append("metadata")
+            if changed:
+                await self._publish_updated(existing, changed)
             if desc.state != existing.state:
                 # A parked session (waiting_on_user) is blocked on a human via
                 # mediation - a block discovery's file-level heuristics cannot
@@ -185,26 +197,40 @@ class SessionRegistry:
         if session is not None:
             session.last_activity_at = at or datetime.now(UTC)
 
-    def refresh_model(self, session_id: str, model: str) -> None:
+    async def refresh_model(self, session_id: str, model: str) -> None:
         """Record a model change immediately after a control call.
 
-        Descriptive, like discovery's field refreshes: no event is published;
-        the adapter's own observations re-confirm (or correct) it as the
-        session's next activity is watched.
+        Descriptive, like discovery's field refreshes. Publishes
+        ``session.updated`` so every client converges; the adapter's own
+        observations re-confirm (or correct) it as the session's next
+        activity is watched.
         """
         session = self._by_id.get(session_id)
-        if session is not None:
+        if session is not None and session.model != model:
             session.model = model
+            await self._publish_updated(session, ["model"])
 
-    def refresh_permission_mode(self, session_id: str, mode: str) -> None:
+    async def refresh_permission_mode(self, session_id: str, mode: str) -> None:
         """Record a permission-mode change immediately after a control call.
 
-        Descriptive, exactly like :meth:`refresh_model`: no event, the
-        adapter re-confirms on its next observation.
+        Descriptive, exactly like :meth:`refresh_model`: publishes
+        ``session.updated``; the adapter re-confirms on its next observation.
         """
         session = self._by_id.get(session_id)
-        if session is not None:
+        if session is not None and session.permission_mode != mode:
             session.permission_mode = mode
+            await self._publish_updated(session, ["permission_mode"])
+
+    async def _publish_updated(self, session: Session, fields: list[str]) -> None:
+        await self._bus.publish(
+            new_event(
+                ev.SESSION_UPDATED,
+                node=self._node,
+                source=_SOURCE,
+                session_id=session.id,
+                payload={"session": session.model_dump(mode="json"), "fields": fields},
+            )
+        )
 
     # ------------------------------------------------------------- rebuild
 
@@ -238,6 +264,19 @@ class SessionRegistry:
             existing.state = to_state
             existing.last_activity_at = event.timestamp
             existing.ended_at = event.timestamp if to_state in END_STATES else None
+        elif event.type == ev.SESSION_UPDATED:
+            existing = self._by_id.get(event.session_id or "")
+            if existing is None:
+                _log.warning("registry.orphan_updated_event", event_id=event.id)
+                return
+            # Descriptive fields only. Copying state/ended_at here could
+            # resurrect a stale state when an update raced a transition.
+            snapshot = Session.model_validate(event.payload["session"])
+            existing.title = snapshot.title
+            existing.project = snapshot.project
+            existing.model = snapshot.model
+            existing.permission_mode = snapshot.permission_mode
+            existing.metadata = dict(snapshot.metadata)
 
     @staticmethod
     def _lifecycle_event(from_state: SessionState, to_state: SessionState) -> str | None:

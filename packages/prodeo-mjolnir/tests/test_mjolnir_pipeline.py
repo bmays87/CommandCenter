@@ -14,6 +14,7 @@ from mjolnir_fakes import (
     FakeStt,
     FakeTts,
     FakeWakeWord,
+    PushSource,
     ScriptedSource,
     make_interaction,
     make_session,
@@ -238,6 +239,191 @@ async def test_echo_cooldown_suppresses_self_trigger() -> None:
     assert _wakes(client) == 1  # the echo never counted as a wake
     assert len(stt.clips) == 1  # and never reached transcription
     assert stt.transcripts == ["SHOULD NOT RUN"]  # second transcript untouched
+
+
+# ------------------------------------------------ follow-up listening (ADR-0023)
+
+
+def _two_pending(client: FakeServerClient) -> None:
+    client.sessions = [
+        make_session("s1", project="/repos/db", active_ago_s=30),
+        make_session("s2", project="/repos/api", active_ago_s=60),
+    ]
+    client.interactions = [
+        make_interaction("i1", "s1", title="Run the migration?"),
+        make_interaction("i2", "s2", title="Delete fixtures?"),
+    ]
+
+
+REPLY_FRAMES = [SPEECH_FRAME, SPEECH_FRAME, SILENCE_FRAME, SILENCE_FRAME]
+
+
+@pytest.mark.asyncio
+async def test_followup_window_captures_reply_without_wake() -> None:
+    """A reply that expects a follow-up opens the no-wake window: the next
+    utterance is captured without a wake word, no ack, same correlation."""
+    client = FakeServerClient()
+    _two_pending(client)
+    # "approve" with two pending reads them out and keeps listening; the
+    # follow-up approves by position - no second WAKE_FRAME anywhere.
+    pipeline, tts, _, stt = _pipeline(
+        client,
+        ScriptedSource([*EXCHANGE, *REPLY_FRAMES]),
+        ["approve", "approve number two"],
+        echo_cooldown_s=0.0,
+        ack_enabled=True,  # the ack must NOT be spoken for the follow-up
+    )
+
+    await pipeline.start()
+    await settle()
+    await pipeline.stop()
+
+    assert _wakes(client) == 1  # one wake for two utterances
+    assert len(stt.clips) == 2
+    assert client.answered == [("i2", "allow")]
+    assert tts.texts[0] == "Yes, sir?"  # ack for the woken exchange only
+    assert tts.texts[-1] == "Approved, sir."
+    assert sum(1 for t in tts.texts if t == "Yes, sir?") == 1
+
+    received = [e for e in client.voice_events if e.type == ev.VOICE_COMMAND_RECEIVED]
+    assert [e.payload["followup"] for e in received] == [False, True]
+    # the follow-up stays in the same exchange's correlation chain
+    assert received[0].correlation_id == received[1].correlation_id
+
+
+@pytest.mark.asyncio
+async def test_expired_followup_window_restores_wake_only() -> None:
+    client = FakeServerClient()
+    _two_pending(client)
+    pipeline, _, _, stt = _pipeline(
+        client,
+        ScriptedSource([*EXCHANGE, *REPLY_FRAMES]),
+        ["approve", "SHOULD NOT RUN"],
+        echo_cooldown_s=0.0,
+        followup_window_s=0.0,  # the window is already over when frames arrive
+    )
+
+    await pipeline.start()
+    await settle()
+    await pipeline.stop()
+
+    assert len(stt.clips) == 1  # speech without a wake word was ignored
+    assert stt.transcripts == ["SHOULD NOT RUN"]
+    assert client.answered == []
+
+
+@pytest.mark.asyncio
+async def test_echo_cooldown_wins_over_the_followup_window() -> None:
+    """The mute check stays ahead of the follow-up check: frames arriving
+    inside the cooldown are drained even though a window is open, so TTS
+    tail can neither self-trigger nor leak into the reply clip."""
+    client = FakeServerClient()
+    _two_pending(client)
+    pipeline, _, _, stt = _pipeline(
+        client,
+        ScriptedSource([*EXCHANGE, *REPLY_FRAMES]),
+        ["approve", "SHOULD NOT RUN"],
+        echo_cooldown_s=5.0,  # every post-reply frame lands inside the cooldown
+        followup_window_s=60.0,
+    )
+
+    await pipeline.start()
+    await settle()
+    await pipeline.stop()
+
+    assert len(stt.clips) == 1  # nothing captured during the mute
+    assert client.answered == []
+
+
+@pytest.mark.asyncio
+async def test_silence_in_the_followup_window_says_nothing() -> None:
+    """A declined invitation is not an error: no "I didn't catch that"."""
+    client = FakeServerClient()
+    _two_pending(client)
+    pipeline, tts, _, stt = _pipeline(
+        client,
+        ScriptedSource([*EXCHANGE] + [SILENCE_FRAME] * 70),  # silence: 5s timeout
+        ["approve"],
+        echo_cooldown_s=0.0,
+    )
+
+    await pipeline.start()
+    await settle()
+    await pipeline.stop()
+
+    assert len(tts.texts) == 1  # only the pending readout spoke
+    assert all("didn't catch" not in t for t in tts.texts)
+    assert stt.transcripts == []  # the readout consumed the only transcript
+
+
+@pytest.mark.asyncio
+async def test_interaction_notification_opens_window_and_answers_by_option() -> None:
+    """After announcing a question, the very next utterance (no wake word)
+    can answer it by option label."""
+    from prodeo.mediation import InteractionKind
+
+    client = FakeServerClient()
+    client.sessions = [make_session("s1", project="/repos/db")]
+    question = make_interaction(
+        "i1",
+        "s1",
+        title="Which approach?",
+        kind=InteractionKind.QUESTION,
+        options=["Safe path", "Fast path"],
+    )
+    client.interactions = [question]
+    source = PushSource()
+    pipeline, tts, _, _ = _pipeline(
+        client,
+        source,
+        ["the fast path"],
+        speak_notifications="always",
+        echo_cooldown_s=0.0,
+    )
+
+    await pipeline.start()
+    await settle()  # cache primed (the pending question is known)
+    client.push(
+        new_event(
+            ev.INTERACTION_REQUESTED,
+            session_id="s1",
+            payload={"interaction": question.model_dump(mode="json")},
+        )
+    )
+    await settle()  # announcement spoken; window + question context open
+    source.push(*REPLY_FRAMES)
+    await settle()
+    source.close()
+    await pipeline.stop()
+
+    assert _wakes(client) == 0  # never woken - the announcement invited the reply
+    assert client.answered_text == [("i1", "Fast path")]
+    assert tts.texts[-1] == "Answered, sir."
+
+
+@pytest.mark.asyncio
+async def test_completed_notification_does_not_open_the_window() -> None:
+    client = FakeServerClient()
+    client.sessions = [make_session("s1", title="nightly")]
+    source = PushSource()
+    pipeline, _, _, stt = _pipeline(
+        client,
+        source,
+        ["SHOULD NOT RUN"],
+        speak_notifications="always",
+        echo_cooldown_s=0.0,
+    )
+
+    await pipeline.start()
+    client.push(new_event(ev.SESSION_COMPLETED, session_id="s1", payload={"title": "nightly"}))
+    await settle()
+    source.push(*REPLY_FRAMES)  # speech with no wake word
+    await settle()
+    source.close()
+    await pipeline.stop()
+
+    assert stt.clips == []  # a completion announcement invites no reply
+    assert stt.transcripts == ["SHOULD NOT RUN"]
 
 
 @pytest.mark.asyncio

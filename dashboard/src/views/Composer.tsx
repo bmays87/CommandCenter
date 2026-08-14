@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { api } from "../api/client";
 import type { Session } from "../api/types";
-import { ModelInput } from "./ModelInput";
+import { ModelPicker } from "./ModelPicker";
 import { ModePicker } from "./ModePicker";
 
 /** Live model switch for a controllable (server-launched) session. */
@@ -12,6 +12,8 @@ function ModelControl({ session }: { session: Session }) {
   const [editing, setEditing] = useState(false);
   const [model, setModel] = useState("");
   const [error, setError] = useState("");
+  const adapters = useQuery({ queryKey: ["adapters"], queryFn: api.adapters });
+  const info = adapters.data?.adapters.find((a) => a.name === session.adapter);
 
   const change = useMutation({
     mutationFn: () => api.setSessionModel(session.id, model),
@@ -22,6 +24,9 @@ function ModelControl({ session }: { session: Session }) {
     },
     onError: (err: unknown) => setError(err instanceof Error ? err.message : String(err)),
   });
+
+  // The adapter declared it cannot switch models: don't offer the control.
+  if (info && !info.capabilities.set_model) return null;
 
   if (!editing) {
     return (
@@ -41,7 +46,13 @@ function ModelControl({ session }: { session: Session }) {
   }
   return (
     <span className="model-control">
-      <ModelInput id="session-model" value={model} onChange={setModel} disabled={change.isPending} />
+      <ModelPicker
+        id="session-model"
+        value={model}
+        onChange={setModel}
+        models={info?.models ?? []}
+        disabled={change.isPending}
+      />
       <button type="button" onClick={() => change.mutate()} disabled={change.isPending}>
         {change.isPending ? "Applying…" : "Apply"}
       </button>
@@ -57,6 +68,8 @@ function ModelControl({ session }: { session: Session }) {
 function ModeControl({ session }: { session: Session }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
+  const adapters = useQuery({ queryKey: ["adapters"], queryFn: api.adapters });
+  const info = adapters.data?.adapters.find((a) => a.name === session.adapter);
   const change = useMutation({
     mutationFn: (mode: string) => api.setSessionPermissionMode(session.id, mode),
     onSuccess: (updated) => {
@@ -65,6 +78,8 @@ function ModeControl({ session }: { session: Session }) {
     },
     onError: (err: unknown) => setError(err instanceof Error ? err.message : String(err)),
   });
+  // The adapter declared it cannot switch permission modes: no control.
+  if (info && !info.capabilities.set_permission_mode) return null;
   return (
     <span className="mode-control">
       <ModePicker

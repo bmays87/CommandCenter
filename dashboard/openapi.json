@@ -1,8 +1,117 @@
 {
   "components": {
     "schemas": {
+      "AdapterCapabilities": {
+        "description": "Declared, not assumed - clients render controls from these flags.",
+        "properties": {
+          "answer_questions": {
+            "default": false,
+            "title": "Answer Questions",
+            "type": "boolean"
+          },
+          "historical_sessions": {
+            "default": false,
+            "title": "Historical Sessions",
+            "type": "boolean"
+          },
+          "interrupt": {
+            "default": false,
+            "title": "Interrupt",
+            "type": "boolean"
+          },
+          "launch": {
+            "default": false,
+            "title": "Launch",
+            "type": "boolean"
+          },
+          "observe": {
+            "default": true,
+            "title": "Observe",
+            "type": "boolean"
+          },
+          "report_context": {
+            "default": false,
+            "title": "Report Context",
+            "type": "boolean"
+          },
+          "respond_to_permissions": {
+            "default": false,
+            "title": "Respond To Permissions",
+            "type": "boolean"
+          },
+          "send_prompts": {
+            "default": false,
+            "title": "Send Prompts",
+            "type": "boolean"
+          },
+          "set_model": {
+            "default": false,
+            "title": "Set Model",
+            "type": "boolean"
+          },
+          "set_permission_mode": {
+            "default": false,
+            "title": "Set Permission Mode",
+            "type": "boolean"
+          },
+          "terminate": {
+            "default": false,
+            "title": "Terminate",
+            "type": "boolean"
+          }
+        },
+        "title": "AdapterCapabilities",
+        "type": "object"
+      },
+      "AdapterInfo": {
+        "description": "One loaded adapter as exposed to clients (``GET /api/adapters``).\n\nLives here (not in the API layer) so clients such as Mjolnir can import\nthe model \u2014 mirroring how ``ClientPresence`` lives in ``prodeo.presence``.",
+        "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/AdapterCapabilities"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ModelInfo"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "capabilities"
+        ],
+        "title": "AdapterInfo",
+        "type": "object"
+      },
+      "AdapterListResponse": {
+        "description": "Loaded adapters with their capabilities and declared model catalogs.",
+        "properties": {
+          "adapters": {
+            "items": {
+              "$ref": "#/components/schemas/AdapterInfo"
+            },
+            "title": "Adapters",
+            "type": "array"
+          }
+        },
+        "required": [
+          "adapters"
+        ],
+        "title": "AdapterListResponse",
+        "type": "object"
+      },
       "Answer": {
-        "description": "A human's resolution of an interaction.\n\nPermissions use ``decision`` (optionally with ``updated_input`` to run the\ntool with edited arguments); questions use ``text``. For a denied\npermission, ``text`` carries the reason shown to the agent.",
+        "description": "A human's resolution of an interaction.\n\nPermissions use ``decision`` (optionally with ``updated_input`` to run the\ntool with edited arguments); questions use ``text`` (a single label or\nfree text) or ``selections`` (structured: group id -> chosen labels).\nFor a denied permission, ``text`` carries the reason shown to the agent.",
         "properties": {
           "decision": {
             "anyOf": [
@@ -18,6 +127,23 @@
               }
             ],
             "title": "Decision"
+          },
+          "selections": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selections"
           },
           "text": {
             "default": "",
@@ -41,7 +167,7 @@
         "type": "object"
       },
       "AnswerRequest": {
-        "description": "A human's answer: ``decision`` for permissions, ``text`` for questions\n(or the deny reason).",
+        "description": "A human's answer: ``decision`` for permissions, ``text`` or\n``selections`` for questions (``text`` doubles as the deny reason).",
         "properties": {
           "decision": {
             "anyOf": [
@@ -57,6 +183,23 @@
               }
             ],
             "title": "Decision"
+          },
+          "selections": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selections"
           },
           "text": {
             "default": "",
@@ -1151,6 +1294,13 @@
             "title": "Options",
             "type": "array"
           },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionGroup"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
           "session_native_id": {
             "title": "Session Native Id",
             "type": "string"
@@ -1219,7 +1369,7 @@
       "HealthResponse": {
         "properties": {
           "boot_id": {
-            "default": "01KZQ8GNRA4T7SNRR39QB9608F",
+            "default": "01KZT1A9SBPYKDNP4EC9N6GTQJ",
             "title": "Boot Id",
             "type": "string"
           },
@@ -1336,6 +1486,13 @@
               "type": "string"
             },
             "title": "Options",
+            "type": "array"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionGroup"
+            },
+            "title": "Questions",
             "type": "array"
           },
           "requested_at": {
@@ -1489,6 +1646,30 @@
         "title": "LaunchSpec",
         "type": "object"
       },
+      "ModelInfo": {
+        "description": "One model an adapter can launch/switch to.\n\n``id`` is adapter-native (an alias or a full model id); free-form ids\nremain legal at every API that accepts a model. An empty catalog means\n\"the adapter takes free-form ids only\".",
+        "properties": {
+          "default": {
+            "default": false,
+            "title": "Default",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "ModelInfo",
+        "type": "object"
+      },
       "OpenEditorRequest": {
         "description": "A project directory to open in the code editor, in a new window.",
         "properties": {
@@ -1582,6 +1763,57 @@
           "prompt"
         ],
         "title": "PromptRequest",
+        "type": "object"
+      },
+      "QuestionGroup": {
+        "description": "One question in a (possibly multi-part) question-kind interaction.\n\nAgent-agnostic: \"the agent asks one or more grouped multiple-choice\nquestions\". ``id`` is the stable key an answer's ``selections`` uses;\nonly the adapter that opened the interaction knows how to map selections\nback to its agent's native input (ADR-0022).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "multi_select": {
+            "default": false,
+            "title": "Multi Select",
+            "type": "boolean"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionOption"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "prompt",
+          "options"
+        ],
+        "title": "QuestionGroup",
+        "type": "object"
+      },
+      "QuestionOption": {
+        "description": "One choice offered by a structured question.",
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "QuestionOption",
         "type": "object"
       },
       "RestartResponse": {
@@ -1924,6 +2156,25 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/adapters": {
+      "get": {
+        "description": "Started adapters with capabilities and declared model catalogs.",
+        "operationId": "list_adapters_api_adapters_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdapterListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Adapters"
+      }
+    },
     "/api/apps": {
       "get": {
         "description": "Installed app extensions, whether each is running and is startable.",

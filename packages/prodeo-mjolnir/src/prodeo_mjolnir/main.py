@@ -61,7 +61,13 @@ def build_pipeline(settings: MjolnirSettings) -> tuple[VoicePipeline, ServerClie
         else None
     )
     handlers = CommandHandlers(
-        cache, client, composer, overnight_hours=settings.overnight_hours, answers=answers
+        cache,
+        client,
+        composer,
+        overnight_hours=settings.overnight_hours,
+        answers=answers,
+        launch_adapter=settings.launch_adapter,
+        dialog_ttl_s=settings.dialog_ttl_s,
     )
     pipeline = VoicePipeline(
         settings,

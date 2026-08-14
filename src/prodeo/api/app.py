@@ -31,7 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 from ulid import ULID
 
-from prodeo.adapters import AdapterManager, LaunchSpec
+from prodeo.adapters import AdapterInfo, AdapterManager, LaunchSpec
 from prodeo.api.auth import make_auth_dependency, websocket_authorized
 from prodeo.apps import AppStatus, AppSupervisor
 from prodeo.bus.interface import BackpressurePolicy, EventBus, matches
@@ -76,6 +76,7 @@ from prodeo.mediation import (
     InteractionKind,
     InteractionStatus,
     MediationService,
+    QuestionGroup,
 )
 from prodeo.persistence.interface import EventQuery, EventStore
 from prodeo.presence import ClientPresence, PresenceTracker
@@ -143,12 +144,14 @@ class InteractionListResponse(BaseModel):
 
 
 class AnswerRequest(BaseModel):
-    """A human's answer: ``decision`` for permissions, ``text`` for questions
-    (or the deny reason)."""
+    """A human's answer: ``decision`` for permissions, ``text`` or
+    ``selections`` for questions (``text`` doubles as the deny reason)."""
 
     decision: Literal["allow", "deny"] | None = None
     text: str = ""
     updated_input: dict[str, Any] | None = None
+    #: Structured answer to a question-kind interaction: group id -> labels.
+    selections: dict[str, list[str]] | None = None
 
 
 class ExternalInteractionRequest(BaseModel):
@@ -161,6 +164,7 @@ class ExternalInteractionRequest(BaseModel):
     title: str
     body: str = ""
     options: list[str] = Field(default_factory=list)
+    questions: list[QuestionGroup] = Field(default_factory=list)
     #: Adapter-native interaction id; the server assigns a ULID when empty.
     native_id: str = ""
     timeout_s: float = Field(gt=0, le=3600)
@@ -268,6 +272,12 @@ class CreateScheduleRequest(BaseModel):
     model: str = ""
     permission_mode: str = ""
     options: dict[str, Any] = Field(default_factory=dict)
+
+
+class AdapterListResponse(BaseModel):
+    """Loaded adapters with their capabilities and declared model catalogs."""
+
+    adapters: list[AdapterInfo]
 
 
 class ExtensionListResponse(BaseModel):
@@ -500,7 +510,12 @@ def create_app(
     )
     async def answer_interaction(interaction_id: str, body: AnswerRequest) -> Interaction:
         """Resolve an interaction; the first answer wins (409 afterwards)."""
-        answer = Answer(decision=body.decision, text=body.text, updated_input=body.updated_input)
+        answer = Answer(
+            decision=body.decision,
+            text=body.text,
+            updated_input=body.updated_input,
+            selections=body.selections,
+        )
         return await mediation.answer(interaction_id, answer, answered_by="api")
 
     @app.post(
@@ -525,6 +540,7 @@ def create_app(
             title=body.title,
             body=body.body,
             options=body.options,
+            questions=body.questions,
             timeout_s=body.timeout_s,
         )
         try:
@@ -749,6 +765,11 @@ def create_app(
         )
         await bus.publish(event)
         return event
+
+    @app.get("/api/adapters", response_model=AdapterListResponse, dependencies=[auth])
+    async def list_adapters() -> AdapterListResponse:
+        """Started adapters with capabilities and declared model catalogs."""
+        return AdapterListResponse(adapters=manager.describe_adapters())
 
     def _extensions() -> ExtensionService:
         if extensions is None:  # not wired (schema export, focused tests)

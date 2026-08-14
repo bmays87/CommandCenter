@@ -24,10 +24,25 @@ if TYPE_CHECKING:
 ADAPTER_API_VERSION: Final = 5
 
 
+class ModelInfo(BaseModel):
+    """One model an adapter can launch/switch to.
+
+    ``id`` is adapter-native (an alias or a full model id); free-form ids
+    remain legal at every API that accepts a model. An empty catalog means
+    "the adapter takes free-form ids only".
+    """
+
+    id: str
+    label: str = ""
+    default: bool = False
+
+
 class AdapterMetadata(BaseModel):
     name: str
     version: str
     adapter_api_version: int = ADAPTER_API_VERSION
+    #: Declared model catalog (like capabilities: declarations, not queries).
+    models: list[ModelInfo] = Field(default_factory=list)
 
 
 class AdapterCapabilities(BaseModel):
@@ -46,6 +61,19 @@ class AdapterCapabilities(BaseModel):
     #: Can report context-window usage for a live session.
     report_context: bool = False
     historical_sessions: bool = False
+
+
+class AdapterInfo(BaseModel):
+    """One loaded adapter as exposed to clients (``GET /api/adapters``).
+
+    Lives here (not in the API layer) so clients such as Mjolnir can import
+    the model — mirroring how ``ClientPresence`` lives in ``prodeo.presence``.
+    """
+
+    name: str
+    version: str
+    capabilities: AdapterCapabilities
+    models: list[ModelInfo] = Field(default_factory=list)
 
 
 class SessionRef(BaseModel):

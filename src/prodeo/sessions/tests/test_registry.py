@@ -7,7 +7,7 @@ import pytest
 
 from prodeo.bus import InProcessEventBus
 from prodeo.errors import IllegalTransitionError, UnknownSessionError
-from prodeo.events import Event
+from prodeo.events import Event, new_event
 from prodeo.events import types as ev
 from prodeo.persistence import SqliteEventStore
 from prodeo.sessions import SessionDescriptor, SessionRegistry, SessionState
@@ -52,7 +52,7 @@ async def test_discovery_creates_session_and_emits_facts(bus: InProcessEventBus)
 
 
 @pytest.mark.asyncio
-async def test_rediscovery_updates_quietly_and_ignores_weak_state_hints(
+async def test_rediscovery_refreshes_fields_and_ignores_weak_state_hints(
     bus: InProcessEventBus,
 ) -> None:
     registry = SessionRegistry(bus)
@@ -70,7 +70,39 @@ async def test_rediscovery_updates_quietly_and_ignores_weak_state_hints(
     assert again is first
     assert again.title == "New title"
     assert again.state == SessionState.ARCHIVED  # illegal hint ignored, no adapter.error
+    events = await _drain(sub)
+    assert [e.type for e in events] == [ev.SESSION_UPDATED]  # descriptive change, no state events
+    assert events[0].payload["fields"] == ["title"]
+
+
+@pytest.mark.asyncio
+async def test_unchanged_rediscovery_publishes_nothing(bus: InProcessEventBus) -> None:
+    """Discovery runs on a timer: a no-op pass must not flood the log."""
+    registry = SessionRegistry(bus)
+    desc = SessionDescriptor(
+        native_id="abc", title="T", project="/p", metadata={"transcript": "/t"}
+    )
+    await registry.upsert_discovered("claude-code", desc)
+
+    sub = bus.subscribe("*", name="probe")
+    await registry.upsert_discovered("claude-code", desc.model_copy(deep=True))
+
     assert await _drain(sub) == []
+
+
+@pytest.mark.asyncio
+async def test_refresh_model_publishes_updated_once(bus: InProcessEventBus) -> None:
+    registry = SessionRegistry(bus)
+    session = await registry.upsert_discovered("claude-code", SessionDescriptor(native_id="abc"))
+    sub = bus.subscribe("session.updated", name="probe")
+
+    await registry.refresh_model(session.id, "opus")
+    await registry.refresh_model(session.id, "opus")  # no-op: same value
+
+    events = await _drain(sub)
+    assert [e.payload["fields"] for e in events] == [["model"]]
+    assert events[0].payload["session"]["model"] == "opus"
+    assert session.model == "opus"
 
 
 @pytest.mark.asyncio
@@ -150,6 +182,7 @@ async def test_rebuild_restores_catalogue_from_event_log(
     b = await registry.upsert_discovered(
         "claude-code", SessionDescriptor(native_id="b", state=SessionState.COMPLETED)
     )
+    await registry.refresh_model(a.id, "opus")
     await registry.observe_state(a.id, SessionState.COMPLETED, reason="idle")
     for event in await _drain(sub):
         await store.append(event)
@@ -162,6 +195,105 @@ async def test_rebuild_restores_catalogue_from_event_log(
     assert restored_a is not None
     assert restored_a.state == SessionState.COMPLETED
     assert restored_a.title == "A"
+    assert restored_a.model == "opus"  # session.updated folded descriptively
     assert restored_a.ended_at is not None
     assert rebuilt.resolve("claude-code", "b") is not None
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_restart_discovery_overwrites_stale_controlled_metadata(
+    bus: InProcessEventBus, tmp_path: Path
+) -> None:
+    """The server-restart scenario: a rebuilt session still carries the
+    launch-time ``controlled=true``, but the adapter's first discovery pass
+    (a fresh instance owns nothing) asserts ``false`` — the registry must
+    overwrite the stale flag and fan the correction out."""
+    store = SqliteEventStore(tmp_path / "events.db")
+    await store.open()
+    sub = bus.subscribe("*", name="recorder")
+    registry = SessionRegistry(bus)
+    session = await registry.upsert_discovered(
+        "claude-code",
+        SessionDescriptor(native_id="abc", metadata={"controlled": "true"}),
+    )
+    for event in await _drain(sub):
+        await store.append(event)
+
+    rebuilt = SessionRegistry(bus)
+    await rebuilt.rebuild(store)
+    restored = rebuilt.get(session.id)
+    assert restored is not None and restored.metadata["controlled"] == "true"
+
+    probe = bus.subscribe("session.updated", name="probe")
+    await rebuilt.upsert_discovered(
+        "claude-code",
+        SessionDescriptor(native_id="abc", metadata={"controlled": "false"}),
+    )
+
+    assert restored.metadata["controlled"] == "false"
+    events = await _drain(probe)
+    assert [e.payload["fields"] for e in events] == [["metadata"]]
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_rebuild_updated_fold_never_resurrects_state(
+    bus: InProcessEventBus, tmp_path: Path
+) -> None:
+    """A ``session.updated`` whose snapshot raced a transition (its dump says
+    ``running`` but it lands after the completion event) must refresh the
+    descriptive fields without touching state or ``ended_at``."""
+    store = SqliteEventStore(tmp_path / "events.db")
+    await store.open()
+    sub = bus.subscribe("*", name="recorder")
+
+    registry = SessionRegistry(bus)
+    session = await registry.upsert_discovered(
+        "claude-code", SessionDescriptor(native_id="a", title="A")
+    )
+    stale_snapshot = session.model_dump(mode="json")  # state: running
+    stale_snapshot["model"] = "opus"
+    await registry.observe_state(session.id, SessionState.COMPLETED, reason="idle")
+    for event in await _drain(sub):
+        await store.append(event)
+    await store.append(
+        new_event(
+            ev.SESSION_UPDATED,
+            node="local",
+            source="session-registry",
+            session_id=session.id,
+            payload={"session": stale_snapshot, "fields": ["model"]},
+        )
+    )
+
+    rebuilt = SessionRegistry(bus)
+    await rebuilt.rebuild(store)
+
+    restored = rebuilt.get(session.id)
+    assert restored is not None
+    assert restored.model == "opus"  # descriptive field applied
+    assert restored.state == SessionState.COMPLETED  # state NOT resurrected
+    assert restored.ended_at is not None
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_rebuild_skips_orphan_updated_event(bus: InProcessEventBus, tmp_path: Path) -> None:
+    store = SqliteEventStore(tmp_path / "events.db")
+    await store.open()
+    await store.append(
+        new_event(
+            ev.SESSION_UPDATED,
+            node="local",
+            source="session-registry",
+            session_id="never-discovered",
+            payload={"session": {"id": "never-discovered"}, "fields": ["model"]},
+        )
+    )
+
+    rebuilt = SessionRegistry(bus)
+    await rebuilt.rebuild(store)  # must not raise
+
+    assert rebuilt.list_sessions() == []
     await store.close()

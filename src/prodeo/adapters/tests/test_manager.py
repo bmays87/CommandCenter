@@ -14,6 +14,7 @@ from prodeo.adapters import (
     InteractionObservation,
     InteractionRef,
     LaunchSpec,
+    ModelInfo,
     ObserveOnlyAdapter,
     OutputObservation,
     SessionRef,
@@ -208,6 +209,35 @@ async def test_observation_for_unknown_session_becomes_adapter_error(
 
 
 @pytest.mark.asyncio
+async def test_adapter_loaded_carries_models_and_describe_adapters_lists_started(
+    bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
+) -> None:
+    adapter = ScriptedAdapter()
+    adapter.metadata = AdapterMetadata(
+        name="scripted",
+        version="0.0.1",
+        models=[ModelInfo(id="alpha", label="Alpha", default=True), ModelInfo(id="beta")],
+    )
+    manager = make_manager(bus, registry, tmp_path)
+    manager.add(adapter)
+    assert manager.describe_adapters() == []  # nothing started yet
+    sub = bus.subscribe("adapter.*", name="probe")
+
+    await manager.start()
+
+    loaded = [e for e in await _drain(sub) if e.type == ev.ADAPTER_LOADED]
+    assert loaded[0].payload["models"] == [
+        {"id": "alpha", "label": "Alpha", "default": True},
+        {"id": "beta", "label": "", "default": False},
+    ]
+    infos = manager.describe_adapters()
+    assert [i.name for i in infos] == ["scripted"]
+    assert [m.id for m in infos[0].models] == ["alpha", "beta"]
+    assert infos[0].capabilities == adapter.capabilities
+    await manager.stop()
+
+
+@pytest.mark.asyncio
 async def test_crashing_adapter_start_is_contained(
     bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
 ) -> None:
@@ -227,6 +257,7 @@ async def test_crashing_adapter_start_is_contained(
     assert ev.ADAPTER_ERROR in types
     assert ev.ADAPTER_LOADED in types  # the good adapter still loaded
     assert registry.resolve("good", "n1") is not None
+    assert [i.name for i in manager.describe_adapters()] == ["good"]
     await manager.stop()
 
 
@@ -374,6 +405,50 @@ async def test_terminate_and_send_prompt_dispatch(
     assert adapter.terminated[0].native_id == "launched-1"
     with pytest.raises(UnknownSessionError):
         await manager.terminate("nope")
+    await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_set_model_publishes_session_updated(
+    bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
+) -> None:
+    adapter = ControlAdapter()
+    manager = make_manager(bus, registry, tmp_path)
+    manager.add(adapter)
+    await manager.start()
+    session = await manager.launch("controlled", LaunchSpec(project="/p"))
+    sub = bus.subscribe("session.updated", name="probe")
+
+    await manager.set_model(session.id, "opus")
+
+    (updated,) = await _drain(sub)
+    assert updated.payload["fields"] == ["model"]
+    assert updated.payload["session"]["model"] == "opus"
+    await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_failed_set_model_raises_and_publishes_no_update(
+    bus: InProcessEventBus, registry: SessionRegistry, tmp_path: Path
+) -> None:
+    class BrokenSetModel(ControlAdapter):
+        async def set_model(self, session: SessionRef, model: str) -> None:
+            raise RuntimeError("not launched by this server")
+
+    adapter = BrokenSetModel()
+    manager = make_manager(bus, registry, tmp_path)
+    manager.add(adapter)
+    await manager.start()
+    session = await manager.launch("controlled", LaunchSpec(project="/p"))
+    updated_sub = bus.subscribe("session.updated", name="probe-updated")
+    error_sub = bus.subscribe("adapter.error", name="probe-error")
+
+    with pytest.raises(AdapterOperationError):
+        await manager.set_model(session.id, "opus")
+
+    assert await _drain(updated_sub) == []  # nothing to converge on
+    errors = await _drain(error_sub)
+    assert [e.payload["error"] for e in errors] == ["set_model_failed"]
     await manager.stop()
 
 

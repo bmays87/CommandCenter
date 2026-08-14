@@ -16,6 +16,7 @@ import structlog
 import websockets
 from ulid import ULID
 
+from prodeo.adapters import AdapterInfo
 from prodeo.events import Event
 from prodeo.mediation import Interaction
 from prodeo.sessions import Session
@@ -62,6 +63,11 @@ class ServerClient:
         data = await self._get_json("/api/interactions", params={"status": "pending"})
         return [Interaction.model_validate(i) for i in data["interactions"]]
 
+    async def list_adapters(self) -> list[AdapterInfo]:
+        """Started adapters with capabilities (launch-by-voice picks from these)."""
+        data = await self._get_json("/api/adapters")
+        return [AdapterInfo.model_validate(a) for a in data["adapters"]]
+
     async def events_since(
         self, since: datetime, *, type_pattern: str = "*", limit: int = 500
     ) -> list[Event]:
@@ -100,6 +106,15 @@ class ServerClient:
 
     async def terminate(self, session_id: str) -> None:
         self._raise_for_status(await self._http.post(f"/api/sessions/{session_id}/terminate"))
+
+    async def launch(self, *, adapter: str, project: str, prompt: str) -> Session:
+        """Start a new agent run (``POST /api/sessions``, confirm-first by voice)."""
+        response = await self._http.post(
+            "/api/sessions",
+            json={"adapter": adapter, "project": project, "prompt": prompt},
+        )
+        self._raise_for_status(response)
+        return Session.model_validate(response.json())
 
     # ------------------------------------------------------------ reporting
 

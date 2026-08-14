@@ -395,6 +395,58 @@ main {
   flex: 1;
 }
 
+.question-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.question-group {
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.25));
+  border-radius: 7px;
+  padding: 8px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.question-group legend {
+  font-weight: 600;
+  font-size: 13px;
+  padding: 0 4px;
+}
+
+.question-hint {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.question-option {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.question-option input {
+  flex: none;
+}
+
+.question-label {
+  font-weight: 500;
+}
+
+.question-description {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.question-form .btn {
+  align-self: flex-start;
+}
+
 .btn {
   border: none;
   border-radius: 7px;

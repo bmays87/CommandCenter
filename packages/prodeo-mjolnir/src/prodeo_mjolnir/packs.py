@@ -34,16 +34,32 @@ NEUTRAL: dict[str, str] = {
     "approved": "Approved{honorific}.",
     "denied": "Denied{honorific}.",
     "responded": "Answered{honorific}.",
+    "needs_dashboard": (
+        "That one has multiple parts{honorific}; it needs the dashboard to answer."
+    ),
     "stopped": "{name} has been stopped{honorific}.",
     "already_resolved": "That was already answered elsewhere{honorific}.",
     "not_found": "I couldn't find anything matching {query}{honorific}.",
     "ambiguous": "{count} sessions match {query}{honorific}; say the project name.",
     "cancelled": "Very well{honorific}.",
     "unknown": "Sorry{honorific}, I didn't understand: {text}.",
+    "launch_confirm": "Starting an agent on {project} to: {prompt}. Shall I go ahead{honorific}?",
+    "launch_started": "Underway{honorific}. The agent is working on {name}.",
+    "launch_cancelled": "Launch cancelled{honorific}.",
+    "launch_failed": "I couldn't start it{honorific}: {error}.",
+    "ask_project": (
+        "Which project{honorific}? I can launch on any project I've seen a session in."
+    ),
+    "ask_prompt": "What should the agent do on {project}{honorific}?",
+    "unknown_project": (
+        "I don't know a project matching {query}{honorific}. Say one I've seen "
+        "before, or start it once from the dashboard first."
+    ),
+    "which_one": "{items} Which one{honorific}?",
     "help": (
         "You can ask for status, the overnight report, or what needs you; "
-        "approve or deny a permission; stop a session; or just ask me a "
-        "question about your agents."
+        "approve or deny a permission; stop a session; start a new session "
+        "by voice; or just ask me a question about your agents."
     ),
     "error": "Something went wrong{honorific}: {error}.",
     "notify_interaction": "{adapter} on {name} asks{honorific}: {title}.",
@@ -75,10 +91,35 @@ STEWARD: dict[str, str] = {
     "approved": "As you wish{honorific}. The permission has been granted.",
     "denied": "As you wish{honorific}. The request has been declined.",
     "responded": "As you wish{honorific}. Your reply has been sent.",
+    "needs_dashboard": (
+        "I'm afraid that one has several parts{honorific}; "
+        "it will need the dashboard to answer properly."
+    ),
     "stopped": "As you wish{honorific}. {name} has been terminated.",
     "already_resolved": "It appears someone attended to that already{honorific}.",
     "cancelled": "Of course{honorific}.",
     "unknown": "My apologies{honorific}, I'm not sure what you meant by: {text}.",
+    "launch_confirm": (
+        "If I understand correctly{honorific}: an agent on {project}, tasked with "
+        "{prompt}. Shall I proceed?"
+    ),
+    "launch_started": "As you wish{honorific}. The agent is at work on {name}.",
+    "launch_cancelled": "As you wish{honorific}; nothing has been started.",
+    "launch_failed": "My apologies{honorific}; I was unable to start it: {error}.",
+    "ask_project": (
+        "Which project shall it be{honorific}? Any project I've seen a session in will do."
+    ),
+    "ask_prompt": "And what should the agent undertake on {project}{honorific}?",
+    "unknown_project": (
+        "I'm afraid I don't know a project matching {query}{honorific}. Name one "
+        "I've seen before, or start it once from the dashboard first."
+    ),
+    "which_one": "{items} Which one shall it be{honorific}?",
+    "help": (
+        "You may ask for status, the overnight report, or what requires you; "
+        "approve or deny a permission; stop a session; start a new session by "
+        "voice; or simply ask after your agents."
+    ),
     "error": "My apologies{honorific}; something has gone wrong: {error}.",
     "notify_interaction": "Pardon the interruption{honorific}. {adapter} on {name} asks: {title}.",
     "notify_completed": "{name} has concluded{honorific}.",

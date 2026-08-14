@@ -288,6 +288,9 @@ async def test_settings_round_trip(tmp_path: Path) -> None:
     assert saved.models_dir == str(tmp_path / "models")
 
 
+# The paid-tier gate is a generic mechanism (ADR-0015 §6); nothing in the
+# bundled catalog is paid today (Mjölnir moved to free), so these tests use a
+# synthetic entry rather than implying any real extension is paid.
 def _paid_service(tmp_path: Path, installer: FakeInstaller) -> ExtensionService:
     return ExtensionService(
         inventory_fn=lambda: [],
@@ -296,10 +299,10 @@ def _paid_service(tmp_path: Path, installer: FakeInstaller) -> ExtensionService:
         catalog=FakeCatalog(
             [
                 CatalogEntry(
-                    name="mjolnir",
-                    package="prodeo-mjolnir[audio]",
+                    name="premium-example",
+                    package="prodeo-premium-example",
                     tier="paid",
-                    tier_note="Mjolnir is a paid extension.",
+                    tier_note="A hypothetical paid extension.",
                 )
             ]
         ),
@@ -313,7 +316,7 @@ async def test_paid_extension_needs_a_licence_key(tmp_path: Path) -> None:
     svc = _paid_service(tmp_path, installer)
 
     with pytest.raises(NotEntitledError, match="paid extension"):
-        await svc.install("mjolnir")
+        await svc.install("premium-example")
 
     assert installer.installed == []  # never reached the installer
 
@@ -326,10 +329,10 @@ async def test_paid_extension_installs_once_entitled(tmp_path: Path) -> None:
     settings.license_key = "test-key"
     await svc.set_settings(settings)
 
-    result = await svc.install("mjolnir")
+    result = await svc.install("premium-example")
 
     assert result.ok is True
-    assert installer.installed == ["prodeo-mjolnir[audio]"]
+    assert installer.installed == ["prodeo-premium-example"]
 
 
 @pytest.mark.asyncio
@@ -340,7 +343,7 @@ async def test_whitespace_is_not_a_licence_key(tmp_path: Path) -> None:
     await svc.set_settings(settings)
 
     with pytest.raises(NotEntitledError):
-        await svc.install("mjolnir")
+        await svc.install("premium-example")
 
 
 def test_inventory_is_read_lazily(tmp_path: Path) -> None:

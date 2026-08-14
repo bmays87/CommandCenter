@@ -18,6 +18,19 @@ An interaction opens when an adapter reports an `InteractionObservation`
 (the Adapter Manager validates it and calls `MediationService.open`). It
 resolves exactly once; every resolution is a published fact.
 
+## Structured questions (ADR-0022)
+
+A question-kind interaction may carry `questions: list[QuestionGroup]` —
+one or more `{id, prompt, options[], multi_select}` groups — alongside the
+flat `options` labels. Answers to structured questions arrive as
+`Answer.selections` (group id → chosen labels); mediation stores and
+publishes them as opaque facts. Only the adapter that opened the interaction
+maps selections to its agent's native input, and it refuses to fabricate: a
+selection matching no offered label means the interaction goes unanswered
+(SDK path: deny; hook path: fall through to the terminal prompt), never a
+guessed choice. Interactions recorded before ADR-0022 rebuild with
+`questions=[]` and keep the flat rendering.
+
 ## External interactions (ADR-0011)
 
 The second entry path: an externally blocked requester — the interactive

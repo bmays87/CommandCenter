@@ -11,6 +11,7 @@ import pytest
 from prodeo_mjolnir.intents import (
     ApproveIntent,
     IntentRouter,
+    LaunchIntent,
     PendingIntent,
     StatusIntent,
     StopIntent,
@@ -21,9 +22,9 @@ from prodeo_mjolnir.llm_router import LlmIntentRouter
 pytestmark = pytest.mark.asyncio
 
 
-def _reply(intent: str, target: str = "") -> httpx.Response:
+def _reply(intent: str, target: str = "", text: str = "") -> httpx.Response:
     """One Ollama ``/api/chat`` response carrying the classifier's JSON."""
-    content = json.dumps({"intent": intent, "target": target})
+    content = json.dumps({"intent": intent, "target": target, "text": text})
     return httpx.Response(200, json={"message": {"content": content}})
 
 
@@ -94,6 +95,26 @@ async def test_action_intent_on_default_allowlist_is_classified() -> None:
     assert await router.route("wind down the nightly refactor") == StopIntent(
         target="nightly refactor"
     )
+
+
+async def test_launch_two_slot_classification() -> None:
+    """The launch intent (ADR-0023) carries both slots; the classifier only
+    *names* it - execution stays confirm-gated in the handlers."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _reply("launch", target="the command center", text="fix the wake word")
+
+    router = _router(httpx.MockTransport(handler), allowed={"status", "launch"})
+    intent = await router.route("could you get an agent going on the command center")
+    assert intent == LaunchIntent(project="command center", prompt="fix the wake word")
+
+
+async def test_launch_absent_from_allowlist_is_unknown() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _reply("launch", target="anywhere", text="anything")
+
+    router = _router(httpx.MockTransport(handler), allowed={"status", "pending"})
+    assert isinstance(await router.route("get an agent going somewhere"), UnknownIntent)
 
 
 async def test_intent_outside_the_allowlist_is_dropped() -> None:

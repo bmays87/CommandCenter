@@ -30,6 +30,9 @@ SYSTEM_APP_EXITED: Final = "system.app_exited"
 SESSION_DISCOVERED: Final = "session.discovered"
 SESSION_STARTED: Final = "session.started"
 SESSION_STATE_CHANGED: Final = "session.state_changed"
+#: Descriptive fields changed (model, title, permission mode, metadata) —
+#: never state; state authority stays with ``session.state_changed``.
+SESSION_UPDATED: Final = "session.updated"
 SESSION_COMPLETED: Final = "session.completed"
 SESSION_FAILED: Final = "session.failed"
 SESSION_STOPPED: Final = "session.stopped"
