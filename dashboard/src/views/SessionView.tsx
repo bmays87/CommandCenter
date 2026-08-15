@@ -130,7 +130,6 @@ const TIMELINE_TYPES = "session.*,agent.*,tool.*,interaction.*";
 export function SessionView({ id }: { id: string }) {
   const queryClient = useQueryClient();
   const [live, setLive] = useState<ProdeoEvent[]>([]);
-  const [editorError, setEditorError] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const pinnedRef = useRef(true);
 
@@ -195,25 +194,7 @@ export function SessionView({ id }: { id: string }) {
               <span className="model">{modeLabel(s.permission_mode)}</span>
             ) : null}
             <span className="ago">{timeAgo(s.last_activity_at)}</span>
-            {s.project ? (
-              <button
-                type="button"
-                className="btn option"
-                onClick={() => {
-                  setEditorError("");
-                  api
-                    .openEditor(s.project ?? "")
-                    .catch((err: unknown) =>
-                      setEditorError(err instanceof Error ? err.message : String(err)),
-                    );
-                }}
-                title="Open this project in a new VS Code window"
-              >
-                Open in VS Code
-              </button>
-            ) : null}
           </div>
-          {editorError ? <div className="notice error">{editorError}</div> : null}
         </header>
       ) : null}
       {(pending.data?.interactions ?? []).map((interaction) => (

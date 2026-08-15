@@ -35,7 +35,6 @@ from prodeo.extensions import (
     workspace_root,
 )
 from prodeo.logging import configure_logging
-from prodeo.machine import LocalMachineActions
 from prodeo.mediation import MediationService
 from prodeo.notify import Notifier
 from prodeo.notify.channels import channels_from_config
@@ -187,10 +186,6 @@ class Server:
                 api_token=settings.api_token,
                 dashboard_dir=settings.dashboard_dir,
                 restart_fn=self.request_restart,
-                # The CCAN seam (ADR-0020): machine-local actions. Local while
-                # hub and agent machine are one host; a remote node
-                # implementation replaces exactly this argument at the split.
-                machine=LocalMachineActions(),
             ),
             host=settings.api_host,
             port=settings.api_port,

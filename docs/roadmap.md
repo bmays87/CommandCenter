@@ -122,15 +122,25 @@ The architecture is the **CCAN split** (ADR-0020): the hub — events, sessions,
 mediation, API, dashboard — is platform-independent and runs in a container;
 a **Command Center Agent Node (CCAN)** is installed on every machine that runs
 AI agents and owns everything machine-bound (adapters/transcript watching,
-agent launch, app supervision, filesystem browse, models storage, host probes,
-editor opening). One hub, many CCANs, one dashboard.
+agent launch, app supervision, filesystem browse, models storage, host
+probes). One hub, many CCANs, one dashboard.
 Work: the CCAN installable + its hub authentication; `EventBus` over NATS (or
 Redis Streams — ADR at the time); dashboard multi-node fleet view; deployment
 recipes (hub container, CCAN via systemd / Windows).
+**UI & onboarding spec (2026-08-15):**
+`docs/plans/2026-08-15-phase6-machines-ui-and-ccan-onboarding.md` — a
+per-machine tab strip below the header nav (one tab per CCAN, renameable,
+each showing that machine's active sessions, history, and new-session
+button); an Add Machine empty state (FQDN/IP of a machine running CCAN);
+installers generated and downloaded from the UI, packaged with the hub's
+public certificate so a CCAN trusts **only** its parent Command Center —
+platform-agnostic if possible, listed per platform otherwise.
 **Due-outs from Phase 5.5 (2026-08-10):** machine actions become node-targeted —
-"open this project in VS Code" and "launch a session here" route to the CCAN
-owning the project. The `MachineActions` seam (`prodeo.machine`) is the wiring
-point; the machine-bound endpoint inventory is listed in ADR-0020.
+"launch a session here" routes to the CCAN owning the project; the
+machine-bound endpoint inventory is listed in ADR-0020. (The `MachineActions`
+seam's first tenant, editor opening, was removed 2026-08-15 — an IDE plays no
+role in an agent's work; see the note in ADR-0020. The seam pattern returns
+with the first real node-targeted action.)
 **Exit:** sessions on two machines visible and controllable from one dashboard.
 *Deferred* — swapped with Onboarding & Extensibility on 2026-08-09: there is no
 multi-machine use case on the horizon, while the single-machine setup ritual is a

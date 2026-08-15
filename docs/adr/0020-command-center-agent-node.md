@@ -3,6 +3,13 @@
 - **Status**: Accepted (direction; implementation lands with Phase 6)
 - **Date**: 2026-08-10
 - **Informs**: roadmap Phase 6 (Many Machines)
+- **Note (2026-08-15)**: the editor-opening action — the seam's first tenant
+  and the motivating example below — was removed: it existed only as a human
+  convenience, and an IDE plays no role in an agent's development.
+  `prodeo.machine` is gone with it. The rule stands: machine-bound capability
+  goes behind a Protocol wired in the composition root; the seam is
+  re-instantiated by Phase 6's first real node-targeted action (session
+  launch routing).
 
 ## Context
 

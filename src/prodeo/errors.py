@@ -73,14 +73,6 @@ class AppNotReadyError(ProdeoError):
         self.gaps = gaps
 
 
-class MachineActionError(ProdeoError):
-    """A machine-local action (open editor, ...) could not be performed.
-
-    The message is user-facing: it names what is missing on the machine
-    (ADR-0020), not an internal condition.
-    """
-
-
 class InteractionAlreadyResolvedError(ProdeoError):
     """An interaction was answered after it had already been resolved.
 

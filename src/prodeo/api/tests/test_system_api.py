@@ -23,25 +23,11 @@ from prodeo.sessions import SessionRegistry
 TOKEN = "secret-token"
 
 
-class FakeMachine:
-    """Records editor-open requests; raises what the test scripts."""
-
-    def __init__(self, fail_with: Exception | None = None) -> None:
-        self.opened: list[str] = []
-        self.fail_with = fail_with
-
-    async def open_editor(self, path: str) -> None:
-        if self.fail_with is not None:
-            raise self.fail_with
-        self.opened.append(path)
-
-
 def _app(
     tmp_path: Path,
     *,
     api_token: str | None = TOKEN,
     restarts: list[int] | None = None,
-    machine: FakeMachine | None = None,
 ) -> FastAPI:
     bus = InProcessEventBus()
     registry = SessionRegistry(bus)
@@ -59,7 +45,6 @@ def _app(
         version="0.0-test",
         api_token=api_token,
         restart_fn=None if restarts is None else lambda: restarts.append(1),
-        machine=machine,
     )
 
 
@@ -177,46 +162,3 @@ def test_browse_skips_an_unreadable_child(tmp_path: Path, monkeypatch: pytest.Mo
     listing = _list_directories(str(tmp_path))
 
     assert [e.name for e in listing.entries] == ["good"]
-
-
-# --- open editor (ADR-0020: through the MachineActions seam) -----------------
-
-
-@pytest.mark.asyncio
-async def test_open_editor_goes_through_the_machine_seam(tmp_path: Path) -> None:
-    machine = FakeMachine()
-    async with _client(_app(tmp_path, machine=machine)) as client:
-        resp = await client.post("/api/system/open-editor", json={"path": str(tmp_path)})
-
-    assert resp.status_code == 200
-    assert resp.json() == {"opened": True, "path": str(tmp_path)}
-    assert machine.opened == [str(tmp_path)]
-
-
-@pytest.mark.asyncio
-async def test_open_editor_maps_machine_errors_to_400_with_the_fix(tmp_path: Path) -> None:
-    from prodeo.errors import MachineActionError
-
-    machine = FakeMachine(fail_with=MachineActionError("VS Code is not on PATH"))
-    async with _client(_app(tmp_path, machine=machine)) as client:
-        resp = await client.post("/api/system/open-editor", json={"path": str(tmp_path)})
-
-    assert resp.status_code == 400
-    assert "not on PATH" in resp.json()["detail"]
-
-
-@pytest.mark.asyncio
-async def test_open_editor_is_refused_without_a_token(tmp_path: Path) -> None:
-    machine = FakeMachine()
-    async with _client(_app(tmp_path, api_token=None, machine=machine), token=None) as client:
-        resp = await client.post("/api/system/open-editor", json={"path": str(tmp_path)})
-
-    assert resp.status_code == 403
-    assert machine.opened == []
-
-
-@pytest.mark.asyncio
-async def test_open_editor_reports_when_unwired(tmp_path: Path) -> None:
-    async with _client(_app(tmp_path)) as client:
-        resp = await client.post("/api/system/open-editor", json={"path": str(tmp_path)})
-    assert resp.status_code == 503

@@ -41,11 +41,6 @@ function NewSessionForm({ onClose }: { onClose: () => void }) {
     onError: (err: unknown) => setError(err instanceof Error ? err.message : String(err)),
   });
 
-  const openEditor = useMutation({
-    mutationFn: () => api.openEditor(project),
-    onError: (err: unknown) => setError(err instanceof Error ? err.message : String(err)),
-  });
-
   return (
     <section className="ext-detail new-session">
       <h2>New session</h2>
@@ -112,14 +107,6 @@ function NewSessionForm({ onClose }: { onClose: () => void }) {
           disabled={launch.isPending || !project.trim() || !prompt.trim()}
         >
           {launch.isPending ? "Starting…" : "Start session"}
-        </button>
-        <button
-          type="button"
-          onClick={() => openEditor.mutate()}
-          disabled={openEditor.isPending || !project.trim()}
-          title="Open this project in a new VS Code window"
-        >
-          Open in VS Code
         </button>
         <button type="button" onClick={onClose}>
           Cancel
