@@ -1730,6 +1730,11 @@
             ],
             "title": "Address"
           },
+          "certificate": {
+            "default": "",
+            "title": "Certificate",
+            "type": "string"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -2474,7 +2479,7 @@
     },
     "/api/ccan/installers": {
       "get": {
-        "description": "CCAN installers this hub can produce (empty until the CCAN package lands).",
+        "description": "CCAN installers this hub can produce.\n\nOne platform-agnostic artifact today (any OS with Python 3.12+);\nplatform-specific builds would appear as further entries. When none\ncan be produced the note says why.",
         "operationId": "list_ccan_installers_api_ccan_installers_get",
         "responses": {
           "200": {
@@ -2489,6 +2494,23 @@
           }
         },
         "summary": "List Ccan Installers"
+      }
+    },
+    "/api/ccan/installers/any/download": {
+      "get": {
+        "description": "Build and stream a fresh installer zip.\n\nEvery download mints its own enrollment token and bakes in this\nhub's certificate, so the artifact pairs a machine to this hub and\nno other (ADR-0025). Write-gated: it is a credential.",
+        "operationId": "download_ccan_installer_api_ccan_installers_any_download_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Download Ccan Installer"
       }
     },
     "/api/events": {
@@ -3234,7 +3256,7 @@
         "summary": "List Machines"
       },
       "post": {
-        "description": "Pair with the CCAN at ``address`` and register its machine.\n\nThe pairing handshake ships with the CCAN package (the next Phase 6\nworkstream); until it lands this hub cannot reach out to a node, so\nthe answer is an honest 501 rather than a fake success. The request\nshape is final \u2014 the dashboard flow is unchanged when pairing arrives.",
+        "description": "Pair with the CCAN at ``address`` and register its machine.\n\nThe handshake proves both directions (ADR-0025): the hub's client\ncertificate is the only one the CCAN answers, and the enrollment\ntoken the CCAN returns must be one this hub minted. 502 when no CCAN\nanswers or the token fails; 409 when its node is already registered.",
         "operationId": "add_machine_api_machines_post",
         "requestBody": {
           "content": {

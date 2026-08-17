@@ -130,9 +130,37 @@ export interface paths {
         };
         /**
          * List Ccan Installers
-         * @description CCAN installers this hub can produce (empty until the CCAN package lands).
+         * @description CCAN installers this hub can produce.
+         *
+         *     One platform-agnostic artifact today (any OS with Python 3.12+);
+         *     platform-specific builds would appear as further entries. When none
+         *     can be produced the note says why.
          */
         get: operations["list_ccan_installers_api_ccan_installers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ccan/installers/any/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Ccan Installer
+         * @description Build and stream a fresh installer zip.
+         *
+         *     Every download mints its own enrollment token and bakes in this
+         *     hub's certificate, so the artifact pairs a machine to this hub and
+         *     no other (ADR-0025). Write-gated: it is a credential.
+         */
+        get: operations["download_ccan_installer_api_ccan_installers_any_download_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -446,10 +474,10 @@ export interface paths {
          * Add Machine
          * @description Pair with the CCAN at ``address`` and register its machine.
          *
-         *     The pairing handshake ships with the CCAN package (the next Phase 6
-         *     workstream); until it lands this hub cannot reach out to a node, so
-         *     the answer is an honest 501 rather than a fake success. The request
-         *     shape is final — the dashboard flow is unchanged when pairing arrives.
+         *     The handshake proves both directions (ADR-0025): the hub's client
+         *     certificate is the only one the CCAN answers, and the enrollment
+         *     token the CCAN returns must be one this hub minted. 502 when no CCAN
+         *     answers or the token fails; 409 when its node is already registered.
          */
         post: operations["add_machine_api_machines_post"];
         delete?: never;
@@ -1956,6 +1984,11 @@ export interface components {
             added_at?: string;
             /** Address */
             address?: string | null;
+            /**
+             * Certificate
+             * @default
+             */
+            certificate: string;
             /** Id */
             id: string;
             /** Name */
@@ -2434,6 +2467,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CcanInstallerListResponse"];
+                };
+            };
+        };
+    };
+    download_ccan_installer_api_ccan_installers_any_download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

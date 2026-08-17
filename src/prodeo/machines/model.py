@@ -24,4 +24,7 @@ class Machine(BaseModel):
     #: FQDN or IP address its CCAN answers on. None = the hub's own
     #: (colocated) machine, which needs no address and cannot be removed.
     address: str | None = None
+    #: The CCAN's own certificate (PEM), recorded at pairing for pinning
+    #: later calls (ADR-0025). Empty for the hub's own machine.
+    certificate: str = ""
     added_at: datetime = Field(default_factory=_now)

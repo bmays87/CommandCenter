@@ -26,9 +26,10 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
+from starlette.background import BackgroundTask
 from ulid import ULID
 
 from prodeo.adapters import AdapterInfo, AdapterManager, LaunchSpec
@@ -42,10 +43,12 @@ from prodeo.errors import (
     AppNotReadyError,
     CapabilityNotSupportedError,
     IllegalTransitionError,
+    InstallerUnavailableError,
     InteractionAlreadyResolvedError,
     InvalidScheduleError,
     MachineConflictError,
     NotEntitledError,
+    PairingError,
     ProdeoError,
     RequirementsNotMetError,
     UnknownAdapterError,
@@ -71,6 +74,8 @@ from prodeo.extensions import (
     InstallResult,
 )
 from prodeo.machines import Machine, MachineRegistry
+from prodeo.machines.installers import InstallerBuilder
+from prodeo.machines.pairing import NodePairing
 from prodeo.mediation import (
     Answer,
     Interaction,
@@ -98,6 +103,10 @@ _ERROR_STATUS: dict[type[ProdeoError], int] = {
     UnknownMachineError: 404,
     #: Conflict - registering a node twice, or removing the hub's own machine.
     MachineConflictError: 409,
+    #: Bad Gateway - the CCAN at the given address failed the handshake.
+    PairingError: 502,
+    #: This hub cannot produce an installer; the message says why.
+    InstallerUnavailableError: 503,
     UnknownAdapterError: 400,
     CapabilityNotSupportedError: 400,
     InvalidScheduleError: 400,
@@ -449,6 +458,10 @@ def create_app(
     restart_fn: Callable[[], None] | None = None,
     #: The machine catalogue (ADR-0024). None = machines endpoints answer 503.
     machines: MachineRegistry | None = None,
+    #: The Add Machine handshake (ADR-0025). None = pairing answers 503.
+    pairing: NodePairing | None = None,
+    #: Builds CCAN installer zips. None = the installer list explains itself.
+    installers: InstallerBuilder | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Prodeo Command Center", version=version)
     auth = Depends(make_auth_dependency(api_token))
@@ -811,19 +824,20 @@ def create_app(
     async def add_machine(body: AddMachineRequest) -> Machine:
         """Pair with the CCAN at ``address`` and register its machine.
 
-        The pairing handshake ships with the CCAN package (the next Phase 6
-        workstream); until it lands this hub cannot reach out to a node, so
-        the answer is an honest 501 rather than a fake success. The request
-        shape is final — the dashboard flow is unchanged when pairing arrives.
+        The handshake proves both directions (ADR-0025): the hub's client
+        certificate is the only one the CCAN answers, and the enrollment
+        token the CCAN returns must be one this hub minted. 502 when no CCAN
+        answers or the token fails; 409 when its node is already registered.
         """
         _require_write()
-        _machines()
-        raise HTTPException(
-            status_code=501,
-            detail=(
-                f"cannot pair with {body.address!r}: CCAN pairing is not part of "
-                "this build yet — the CCAN package is the next Phase 6 workstream"
-            ),
+        if pairing is None:  # not wired (schema export, focused tests)
+            raise HTTPException(status_code=503, detail="pairing is not available on this server")
+        paired = await pairing.pair(body.address)
+        return await _machines().add(
+            node=paired.node,
+            name=paired.name or paired.node,
+            address=body.address,
+            certificate=paired.certificate_pem,
         )
 
     @app.put("/api/machines/{machine_id}/name", response_model=Machine, dependencies=[auth])
@@ -844,13 +858,50 @@ def create_app(
         dependencies=[auth],
     )
     async def list_ccan_installers() -> CcanInstallerListResponse:
-        """CCAN installers this hub can produce (empty until the CCAN package lands)."""
+        """CCAN installers this hub can produce.
+
+        One platform-agnostic artifact today (any OS with Python 3.12+);
+        platform-specific builds would appear as further entries. When none
+        can be produced the note says why.
+        """
+        if installers is None:  # not wired (schema export, focused tests)
+            return CcanInstallerListResponse(
+                installers=[], note="Installer generation is not available on this server."
+            )
+        reason = installers.unavailable_reason()
+        if reason is not None:
+            return CcanInstallerListResponse(installers=[], note=f"No installers: {reason}.")
         return CcanInstallerListResponse(
-            installers=[],
-            note=(
-                "This build cannot produce CCAN installers yet; they arrive "
-                "with the CCAN package in the next Phase 6 workstream."
-            ),
+            installers=[
+                CcanInstaller(
+                    id="any",
+                    label="CCAN installer (any OS with Python 3.12+)",
+                    platform="any",
+                    url="/api/ccan/installers/any/download",
+                )
+            ]
+        )
+
+    @app.get("/api/ccan/installers/any/download", dependencies=[auth])
+    async def download_ccan_installer() -> FileResponse:
+        """Build and stream a fresh installer zip.
+
+        Every download mints its own enrollment token and bakes in this
+        hub's certificate, so the artifact pairs a machine to this hub and
+        no other (ADR-0025). Write-gated: it is a credential.
+        """
+        _require_write()
+        if installers is None:  # not wired (schema export, focused tests)
+            raise HTTPException(
+                status_code=503, detail="installer generation is not available on this server"
+            )
+        path = await installers.build()
+        return FileResponse(
+            path,
+            media_type="application/zip",
+            filename="prodeo-ccan-installer.zip",
+            # The zip is minted per download; remove it once streamed.
+            background=BackgroundTask(path.unlink),
         )
 
     def _extensions() -> ExtensionService:

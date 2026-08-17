@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { api } from "../api/client";
+import { api, downloadUrl } from "../api/client";
 
 /**
  * The "Download CCAN Installer" button and the list it reveals.
@@ -31,7 +31,7 @@ export function CcanInstallers() {
             <ul className="installer-list">
               {installers.data.installers.map((i) => (
                 <li key={i.id}>
-                  <a href={i.url} download>
+                  <a href={downloadUrl(i.url)} download>
                     {i.label}
                   </a>{" "}
                   <span className="installer-platform">({i.platform})</span>

@@ -117,6 +117,20 @@ class Settings(BaseSettings):
         return self.data_dir / "archive"
 
     @property
+    def identity_dir(self) -> Path:
+        """The hub's key material and enrollment records (ADR-0025).
+
+        Contains the private key — nothing here belongs in the event log or
+        a backup that leaves the machine.
+        """
+        return self.data_dir / "identity"
+
+    @property
+    def installer_out_dir(self) -> Path:
+        """Scratch space for freshly minted CCAN installer zips."""
+        return self.data_dir / "installers"
+
+    @property
     def scheduler_tz(self) -> tzinfo:
         if self.scheduler_timezone:
             return ZoneInfo(self.scheduler_timezone)

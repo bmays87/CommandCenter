@@ -50,11 +50,24 @@ class MachineRegistry:
 
     # ------------------------------------------------------------ commands
 
-    async def add(self, *, node: str, name: str = "", address: str | None = None) -> Machine:
+    async def add(
+        self,
+        *,
+        node: str,
+        name: str = "",
+        address: str | None = None,
+        certificate: str = "",
+    ) -> Machine:
         """Register a machine (409 upstream when its node is already known)."""
         if self.get_by_node(node) is not None:
             raise MachineConflictError(f"machine {node!r} is already registered")
-        machine = Machine(id=str(ULID()), node=node, name=name or node, address=address)
+        machine = Machine(
+            id=str(ULID()),
+            node=node,
+            name=name or node,
+            address=address,
+            certificate=certificate,
+        )
         self._by_id[machine.id] = machine
         await self._bus.publish(
             new_event(

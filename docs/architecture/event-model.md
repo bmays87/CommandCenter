@@ -149,9 +149,10 @@ The Machine Registry is the only writer of `machine.*` events
 (ADR-0024). The hub's own machine is added automatically on first boot;
 remote machines are added by CCAN pairing. Payloads (v1):
 
-- `machine.added` — `{"machine": {id, node, name, address, added_at}}` (full
-  Machine dump; `address` is the CCAN's FQDN/IP, null for the hub's own
-  machine).
+- `machine.added` — `{"machine": {id, node, name, address, certificate,
+  added_at}}` (full Machine dump; `address` is the CCAN's FQDN/IP, null for
+  the hub's own machine; `certificate` is the CCAN's public certificate PEM
+  recorded at pairing for pinning, empty for the hub's own — ADR-0025).
 - `machine.renamed` — `{"machine_id", "name"}`. Display name only; `node`
   identity never changes, so history stays attributed.
 - `machine.removed` — `{"machine_id"}`. Forgets the machine; its sessions

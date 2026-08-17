@@ -95,3 +95,20 @@ class MachineConflictError(ProdeoError):
     Raised for registering a node twice and for removing the hub's own
     machine (ADR-0024); the message is user-facing and says which.
     """
+
+
+class PairingError(ProdeoError):
+    """The Add Machine handshake with a CCAN failed (ADR-0025).
+
+    The message is user-facing and actionable: which address, and whether the
+    problem is reachability, a non-CCAN answerer, or an enrollment token this
+    hub did not mint.
+    """
+
+
+class InstallerUnavailableError(ProdeoError):
+    """This hub cannot produce a CCAN installer right now.
+
+    The message says why (not a workspace checkout, uv missing, build
+    failure) — surfaced to the dashboard as-is.
+    """

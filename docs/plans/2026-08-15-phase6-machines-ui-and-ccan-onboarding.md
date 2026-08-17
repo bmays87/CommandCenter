@@ -78,12 +78,11 @@ page whose center is the onboarding flow:
   side (how the hub knows a given CCAN is one of *its* installs — e.g. an
   enrollment token minted at installer download) is decided in the Phase 6
   auth ADR.
-- Open tension to resolve in that ADR: "Add Machine takes an FQDN/IP"
-  implies the hub dials the CCAN, while ADR-0020 favors the proven
-  outbound-only hook pattern (ADR-0011). Candidate reconciliation: the
-  FQDN/IP is used for initial pairing/verification, after which the CCAN
-  holds a persistent outbound channel; either way the parent-only rule above
-  is non-negotiable.
+- Direction, as decided in ADR-0025: **pairing** is hub → CCAN at the
+  FQDN/IP (mutual TLS, client-cert-gated). Whether *routine* traffic stays
+  hub → node or flips to a persistent outbound channel from the CCAN
+  (ADR-0020's hook pattern) is workstream C's transport ADR; the
+  parent-only rule holds either way.
 
 ## 5. Implementation sequencing (2026-08-15)
 
@@ -97,11 +96,13 @@ Four workstreams, in order; each leaves the system runnable and green.
   `Session.node`, the tab strip, per-machine session scoping, the empty
   state. Add Machine answers an honest 501 and the installer list is empty
   with a note until B exists; both contracts are final.
-- **B — CCAN package + pairing + installer generation.** New workspace
-  package `packages/prodeo-ccan` (the node daemon); hub certificate
-  generated at first boot; installer built and served by the hub with the
-  cert + hub address baked in; Add Machine completes the pairing handshake.
-  ADR: pairing/trust (parent-only rule, §4).
+- **B — CCAN package + pairing + installer generation.** *Landed
+  2026-08-16 (ADR-0025).* `packages/prodeo-ccan` (mutual-TLS listener,
+  parent cert as the whole trust store); hub identity minted at first boot
+  (`prodeo.identity`); installers built per download (stdlib `install.py`
+  + first-party wheels + hub cert + single-use, node-bound enrollment
+  token); Add Machine performs the two-way handshake and records the
+  CCAN's certificate for C to pin. Rotation = re-pair (ADR-0025).
 - **C — Node-targeted capabilities + event transport.** Session launch and
   the machine-bound inventory (ADR-0020) route to the owning CCAN; CCAN
   events flow into the hub log with their node identity. The broker
@@ -115,9 +116,9 @@ Four workstreams, in order; each leaves the system runnable and green.
 - **Colocated upgrade path** — *resolved in A (ADR-0024)*: the hub's own
   node auto-registers on boot (named from `PRODEO_NODE_NAME`), so an
   upgraded deployment lands on a one-tab fleet, never the empty state.
-- **Certificate lifecycle**: what generates the hub certificate (first-boot
-  self-signed vs. user-supplied), and what happens to already-paired CCANs
-  when it rotates. Decide in B's pairing ADR.
+- **Certificate lifecycle** — *resolved in B (ADR-0025)*: first-boot
+  self-signed, ten-year validity; rotation is re-pairing (new installers,
+  reinstall on each node). User-supplied certificates deferred.
 - **Removing a machine** — *resolved in A (ADR-0024)*: DELETE forgets the
   record only; the node's sessions and events stay in the log. The hub's
   own machine cannot be removed (409).

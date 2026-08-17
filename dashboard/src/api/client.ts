@@ -33,6 +33,14 @@ export function setToken(token: string): void {
   localStorage.setItem(TOKEN_KEY, token);
 }
 
+/** API URL with the token in the query string, for browser-native downloads
+ *  (an `<a href>` cannot send the Authorization header). */
+export function downloadUrl(path: string): string {
+  const token = getToken();
+  if (!token) return path;
+  return `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
+}
+
 export class UnauthorizedError extends Error {
   constructor() {
     super("unauthorized");

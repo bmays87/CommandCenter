@@ -14,8 +14,10 @@ dependencies = [
     "fastapi>=0.111",
     "uvicorn>=0.30",
     "websockets>=12",
-    # ntfy notification channel (plain async HTTP POSTs)
+    # ntfy notification channel + the CCAN pairing client (ADR-0025)
     "httpx>=0.27",
+    # hub/node identity certificates (ADR-0025)
+    "cryptography>=42",
     # zoneinfo has no system tz database on Windows (scheduler cron timezones)
     "tzdata>=2024.1; sys_platform == 'win32'",
 ]
@@ -31,6 +33,7 @@ dev = [
     "ruff>=0.5",
     "httpx>=0.27",
     "prodeo-adapter-claude-code",
+    "prodeo-ccan",
     "prodeo-summarizer-ollama",
     "prodeo-adapter-skeleton",
     "prodeo-adapter-aider",
@@ -47,6 +50,7 @@ members = ["packages/*", "examples/adapter-skeleton"]
 
 [tool.uv.sources]
 prodeo-adapter-claude-code = { workspace = true }
+prodeo-ccan = { workspace = true }
 prodeo-summarizer-ollama = { workspace = true }
 prodeo-adapter-skeleton = { workspace = true }
 prodeo-adapter-aider = { workspace = true }
@@ -71,6 +75,7 @@ src = [
     "src",
     "tests",
     "packages/prodeo-adapter-claude-code/src",
+    "packages/prodeo-ccan/src",
     "packages/prodeo-summarizer-ollama/src",
     "packages/prodeo-adapter-aider/src",
     "packages/prodeo-adapter-codex/src",
@@ -89,10 +94,11 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "TCH", "RUF"]
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
-mypy_path = "src:packages/prodeo-adapter-claude-code/src:packages/prodeo-summarizer-ollama/src:packages/prodeo-adapter-aider/src:packages/prodeo-adapter-codex/src:packages/prodeo-mjolnir/src:packages/prodeo-wakeword-openwakeword/src:packages/prodeo-stt-fasterwhisper/src:packages/prodeo-tts-piper/src:packages/prodeo-stt-parakeet/src:examples/adapter-skeleton/src"
+mypy_path = "src:packages/prodeo-adapter-claude-code/src:packages/prodeo-ccan/src:packages/prodeo-summarizer-ollama/src:packages/prodeo-adapter-aider/src:packages/prodeo-adapter-codex/src:packages/prodeo-mjolnir/src:packages/prodeo-wakeword-openwakeword/src:packages/prodeo-stt-fasterwhisper/src:packages/prodeo-tts-piper/src:packages/prodeo-stt-parakeet/src:examples/adapter-skeleton/src"
 packages = [
     "prodeo",
     "prodeo_adapter_claude_code",
+    "prodeo_ccan",
     "prodeo_summarizer_ollama",
     "prodeo_adapter_skeleton",
     "prodeo_adapter_aider",

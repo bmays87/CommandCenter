@@ -20,6 +20,7 @@ members = [
     "prodeo-adapter-claude-code",
     "prodeo-adapter-codex",
     "prodeo-adapter-skeleton",
+    "prodeo-ccan",
     "prodeo-mjolnir",
     "prodeo-stt-fasterwhisper",
     "prodeo-stt-parakeet",
@@ -986,6 +987,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "pydantic" },
@@ -1005,6 +1007,7 @@ dev = [
     { name = "prodeo-adapter-claude-code" },
     { name = "prodeo-adapter-codex" },
     { name = "prodeo-adapter-skeleton" },
+    { name = "prodeo-ccan" },
     { name = "prodeo-mjolnir", extra = ["audio"] },
     { name = "prodeo-stt-fasterwhisper" },
     { name = "prodeo-stt-parakeet" },
@@ -1019,6 +1022,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.20" },
+    { name = "cryptography", specifier = ">=42" },
     { name = "fastapi", specifier = ">=0.111" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "pydantic", specifier = ">=2.7" },
@@ -1038,6 +1042,7 @@ dev = [
     { name = "prodeo-adapter-claude-code", editable = "packages/prodeo-adapter-claude-code" },
     { name = "prodeo-adapter-codex", editable = "packages/prodeo-adapter-codex" },
     { name = "prodeo-adapter-skeleton", editable = "examples/adapter-skeleton" },
+    { name = "prodeo-ccan", editable = "packages/prodeo-ccan" },
     { name = "prodeo-mjolnir", extras = ["audio"], editable = "packages/prodeo-mjolnir" },
     { name = "prodeo-stt-fasterwhisper", editable = "packages/prodeo-stt-fasterwhisper" },
     { name = "prodeo-stt-parakeet", editable = "packages/prodeo-stt-parakeet" },
@@ -1098,6 +1103,21 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "prodeo", editable = "." }]
+
+[[package]]
+name = "prodeo-ccan"
+version = "0.1.0"
+source = { editable = "packages/prodeo-ccan" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "prodeo" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cryptography", specifier = ">=42" },
+    { name = "prodeo", editable = "." },
+]
 
 [[package]]
 name = "prodeo-mjolnir"

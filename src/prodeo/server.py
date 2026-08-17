@@ -34,8 +34,12 @@ from prodeo.extensions import (
     local_index_dir,
     workspace_root,
 )
+from prodeo.identity import IdentityProvider
 from prodeo.logging import configure_logging
 from prodeo.machines import MachineRegistry
+from prodeo.machines.enrollments import Enrollments
+from prodeo.machines.installers import InstallerBuilder
+from prodeo.machines.pairing import CcanPairingClient
 from prodeo.mediation import MediationService
 from prodeo.notify import Notifier
 from prodeo.notify.channels import channels_from_config
@@ -84,6 +88,21 @@ class Server:
             tz=settings.scheduler_tz,
         )
         self.machines = MachineRegistry(self.bus, node=settings.node_name)
+        # The hub's identity + the CCAN onboarding path (ADR-0025). The
+        # certificate is minted lazily (first get()), forced at start().
+        self.identity = IdentityProvider(settings.identity_dir, common_name=settings.node_name)
+        enrollments = Enrollments(settings.identity_dir / "enrollments.json")
+        self.pairing = CcanPairingClient(self.identity, enrollments, hub_node=settings.node_name)
+        self.installers = InstallerBuilder(
+            workspace=workspace_root(),
+            # Shared with the extensions manager: one wheel cache per data dir.
+            wheels_dir=local_index_dir(settings.data_dir),
+            out_dir=settings.installer_out_dir,
+            identity=self.identity,
+            enrollments=enrollments,
+            hub_node=settings.node_name,
+            hub_address_hint=settings.public_url,
+        )
         self.retention = RetentionService(
             self.bus,
             self.store,
@@ -189,6 +208,8 @@ class Server:
                 dashboard_dir=settings.dashboard_dir,
                 restart_fn=self.request_restart,
                 machines=self.machines,
+                pairing=self.pairing,
+                installers=self.installers,
             ),
             host=settings.api_host,
             port=settings.api_port,
@@ -227,6 +248,9 @@ class Server:
         await self.machines.rebuild(self.store)
         # After the rebuild, so the hub's machine is added exactly once ever.
         await self.machines.ensure_local()
+        # Mint (or load) the hub certificate now rather than on first use, so
+        # every boot logs the same fingerprint installers will carry.
+        await self.identity.get()
         await self.bus.publish(
             new_event(
                 ev.SYSTEM_STARTED,
