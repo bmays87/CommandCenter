@@ -1434,7 +1434,6 @@
       "HealthResponse": {
         "properties": {
           "boot_id": {
-            "default": "01M02ZGC59GBA1CME0609YNJW7",
             "title": "Boot Id",
             "type": "string"
           },
@@ -1454,7 +1453,8 @@
         "required": [
           "status",
           "version",
-          "node"
+          "node",
+          "boot_id"
         ],
         "title": "HealthResponse",
         "type": "object"

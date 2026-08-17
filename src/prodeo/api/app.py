@@ -125,8 +125,10 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     node: str
-    #: New on every process start; see :data:`BOOT_ID`.
-    boot_id: str = BOOT_ID
+    #: New on every process start; see :data:`BOOT_ID`. Required, no default:
+    #: a per-process value as a field default would leak into the exported
+    #: OpenAPI schema and change on every export, breaking CI's drift check.
+    boot_id: str
 
 
 class SessionListResponse(BaseModel):

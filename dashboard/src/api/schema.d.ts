@@ -1786,10 +1786,7 @@ export interface components {
         };
         /** HealthResponse */
         HealthResponse: {
-            /**
-             * Boot Id
-             * @default 01M02ZGC59GBA1CME0609YNJW7
-             */
+            /** Boot Id */
             boot_id: string;
             /** Node */
             node: string;
