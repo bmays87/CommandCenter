@@ -131,8 +131,10 @@ class InstallerBuilder:
 
 
 def _first_party_wheels(wheels_dir: Path) -> list[Path]:
-    """The wheels an installer must bundle: core + ccan, or nothing.
+    """The wheels an installer must bundle, or nothing when incomplete.
 
+    Core + the node daemon, plus the first-party claude-code adapter so a
+    fresh machine can observe and launch agents out of the box (ADR-0026).
     ``prodeo-*.whl`` matches only the core wheel — every other first-party
     distribution normalizes to ``prodeo_<name>``.
     """
@@ -140,9 +142,10 @@ def _first_party_wheels(wheels_dir: Path) -> list[Path]:
         return []
     core = sorted(wheels_dir.glob("prodeo-*.whl"))
     ccan = sorted(wheels_dir.glob("prodeo_ccan-*.whl"))
+    adapter = sorted(wheels_dir.glob("prodeo_adapter_claude_code-*.whl"))
     if not core or not ccan:
         return []
-    return [core[-1], ccan[-1]]
+    return [core[-1], ccan[-1], *adapter[-1:]]
 
 
 def _write_zip(out: Path, script: str, config: dict[str, object], wheels: list[Path]) -> None:

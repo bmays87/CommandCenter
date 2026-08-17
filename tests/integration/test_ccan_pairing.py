@@ -20,7 +20,7 @@ import uvicorn
 from prodeo.errors import PairingError
 from prodeo.identity import IdentityProvider, ensure_identity
 from prodeo.machines.enrollments import Enrollments
-from prodeo.machines.pairing import CcanPairingClient
+from prodeo.machines.pairing import CcanPairingClient, pinned_client
 from prodeo_ccan.app import create_app
 from prodeo_ccan.config import CcanConfig
 
@@ -101,6 +101,16 @@ async def test_pairing_over_mutual_tls_is_parent_only(tmp_path: Path) -> None:
 
         # Re-pairing the same machine keeps working (token bound, not burned).
         assert (await client.pair(address)).node == "worker-01"
+
+        # Post-pairing calls pin the recorded certificate (ADR-0026): the
+        # right pin answers, a wrong pin fails the handshake client-side.
+        async with pinned_client(hub, paired.certificate_pem) as pinned:
+            health = await pinned.get(f"https://{address}/ccan/v1/health")
+            assert health.json()["node"] == "worker-01"
+        wrong_pin = hub.certificate_pem  # a valid cert, just not this node's
+        with pytest.raises(httpx.HTTPError):
+            async with pinned_client(hub, wrong_pin) as mispinned:
+                await mispinned.get(f"https://{address}/ccan/v1/health")
     finally:
         server.should_exit = True
         await serve_task

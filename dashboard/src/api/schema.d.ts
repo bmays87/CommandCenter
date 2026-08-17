@@ -14,6 +14,9 @@ export interface paths {
         /**
          * List Adapters
          * @description Started adapters with capabilities and declared model catalogs.
+         *
+         *     ``machine`` (a Machine id) asks a paired machine's CCAN for *its*
+         *     adapters instead — what the new-session form shows per tab.
          */
         get: operations["list_adapters_api_adapters_get"];
         put?: never;
@@ -449,6 +452,10 @@ export interface paths {
         /**
          * Answer Interaction
          * @description Resolve an interaction; the first answer wins (409 afterwards).
+         *
+         *     An interaction opened on a paired machine routes to its CCAN — the
+         *     agent's waiting callback lives in that process (ADR-0026); the
+         *     resolution mirrors back through node sync.
          */
         post: operations["answer_interaction_api_interactions__interaction_id__answer_post"];
         delete?: never;
@@ -640,7 +647,11 @@ export interface paths {
         put?: never;
         /**
          * Launch Session
-         * @description Launch a new agent run through a control-capable adapter.
+         * @description Launch a new agent run, on this machine or a paired one.
+         *
+         *     ``machine_id`` picks where (empty = the hub's own machine): a remote
+         *     launch forwards to the owning CCAN, and the session comes back — and
+         *     keeps arriving, via node sync — under that node's identity.
          */
         post: operations["launch_session_api_sessions_post"];
         delete?: never;
@@ -1873,6 +1884,11 @@ export interface components {
             kind: components["schemas"]["InteractionKind"];
             /** Native Id */
             native_id: string;
+            /**
+             * Node
+             * @default local
+             */
+            node: string;
             /** Options */
             options?: string[];
             /** Questions */
@@ -1912,6 +1928,11 @@ export interface components {
         LaunchRequest: {
             /** Adapter */
             adapter: string;
+            /**
+             * Machine Id
+             * @default
+             */
+            machine_id: string;
             /**
              * Model
              * @default
@@ -2285,7 +2306,9 @@ export type $defs = Record<string, never>;
 export interface operations {
     list_adapters_api_adapters_get: {
         parameters: {
-            query?: never;
+            query?: {
+                machine?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2299,6 +2322,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdapterListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

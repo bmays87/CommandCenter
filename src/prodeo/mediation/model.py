@@ -88,6 +88,11 @@ class Interaction(BaseModel):
     session_id: str
     adapter: str
     native_id: str
+    #: Node identity of the mediation service that opened it. What routes an
+    #: answer to the owning machine, and what keeps the hub's restart sweep
+    #: from cancelling remote pendings (ADR-0026). Additive: pre-Phase-6
+    #: stored events rebuild as "local", which is what they were.
+    node: str = "local"
     kind: InteractionKind
     title: str
     body: str = ""

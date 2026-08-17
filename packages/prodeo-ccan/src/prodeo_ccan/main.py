@@ -16,6 +16,7 @@ import uvicorn
 from prodeo.identity import ensure_identity
 from prodeo_ccan.app import create_app
 from prodeo_ccan.config import CcanConfig, default_data_dir
+from prodeo_ccan.node import NodeHost
 
 
 def main() -> None:
@@ -38,7 +39,7 @@ def main() -> None:
     print(f"prodeo-ccan: node {config.node_name!r}, parent hub {config.hub.node!r}")
     print(f"listening on 0.0.0.0:{config.port} (mutual TLS, parent-only)")
     uvicorn.run(
-        create_app(config, identity),
+        create_app(config, identity, NodeHost(config)),
         # All interfaces on purpose: the hub dials in from another machine.
         # Only the parent passes the client-certificate requirement below.
         host="0.0.0.0",

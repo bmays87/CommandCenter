@@ -158,9 +158,13 @@ remote machines are added by CCAN pairing. Payloads (v1):
 - `machine.removed` — `{"machine_id"}`. Forgets the machine; its sessions
   and events stay in the log.
 
-Relatedly, `Session` carries `node` (additive, default `"local"`): the
-registry stamps the owning machine's identity at creation, and the dashboard
-scopes each machine tab by it.
+Relatedly, `Session` and `Interaction` carry `node` (additive, default
+`"local"`): the owning machine's identity, stamped at creation. The
+dashboard scopes each machine tab by it, hub command routing targets the
+owning CCAN with it, and paired machines' logs are **mirrored** into the
+hub's store verbatim — same ids, same node — by node sync (ADR-0026), the
+owning node staying the only writer of its `session.*`/`interaction.*`
+facts.
 
 ## Summary Events (Phase 3)
 

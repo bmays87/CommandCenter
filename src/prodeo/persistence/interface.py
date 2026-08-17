@@ -20,6 +20,9 @@ class EventQuery(BaseModel):
     before_id: str | None = None  # exclusive ULID cursor (paging backward)
     type_pattern: str = "*"  # exact, ``ns.*`` or ``*``
     session_id: str | None = None
+    #: Originating machine (``Event.node``); None = all nodes. What node
+    #: sync uses to find its per-machine cursor (ADR-0026).
+    node: str | None = None
     limit: int = 500
     order: Literal["asc", "desc"] = "asc"
 

@@ -1546,6 +1546,11 @@
             "title": "Native Id",
             "type": "string"
           },
+          "node": {
+            "default": "local",
+            "title": "Node",
+            "type": "string"
+          },
           "options": {
             "items": {
               "type": "string"
@@ -1645,6 +1650,11 @@
         "properties": {
           "adapter": {
             "title": "Adapter",
+            "type": "string"
+          },
+          "machine_id": {
+            "default": "",
+            "title": "Machine Id",
             "type": "string"
           },
           "model": {
@@ -2273,8 +2283,26 @@
   "paths": {
     "/api/adapters": {
       "get": {
-        "description": "Started adapters with capabilities and declared model catalogs.",
+        "description": "Started adapters with capabilities and declared model catalogs.\n\n``machine`` (a Machine id) asks a paired machine's CCAN for *its*\nadapters instead \u2014 what the new-session form shows per tab.",
         "operationId": "list_adapters_api_adapters_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "machine",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Machine"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2285,6 +2313,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "List Adapters"
@@ -3189,7 +3227,7 @@
     },
     "/api/interactions/{interaction_id}/answer": {
       "post": {
-        "description": "Resolve an interaction; the first answer wins (409 afterwards).",
+        "description": "Resolve an interaction; the first answer wins (409 afterwards).\n\nAn interaction opened on a paired machine routes to its CCAN \u2014 the\nagent's waiting callback lives in that process (ADR-0026); the\nresolution mirrors back through node sync.",
         "operationId": "answer_interaction_api_interactions__interaction_id__answer_post",
         "parameters": [
           {
@@ -3621,7 +3659,7 @@
         "summary": "List Sessions"
       },
       "post": {
-        "description": "Launch a new agent run through a control-capable adapter.",
+        "description": "Launch a new agent run, on this machine or a paired one.\n\n``machine_id`` picks where (empty = the hub's own machine): a remote\nlaunch forwards to the owning CCAN, and the session comes back \u2014 and\nkeeps arriving, via node sync \u2014 under that node's identity.",
         "operationId": "launch_session_api_sessions_post",
         "requestBody": {
           "content": {

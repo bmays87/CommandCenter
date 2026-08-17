@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { api } from "../api/client";
-import { isActive, type Session } from "../api/types";
+import { isActive, type Machine, type Session } from "../api/types";
 import { projectName, timeAgo } from "../format";
 import { useLiveEvents } from "../live";
 import { AddMachineDialog } from "./AddMachineDialog";
@@ -16,8 +16,10 @@ function StateBadge({ state }: { state: string }) {
   return <span className={`badge state-${state}`}>{state.replace(/_/g, " ")}</span>;
 }
 
-/** Start a new agent run on a chosen project (POST /api/sessions). */
-function NewSessionForm({ onClose }: { onClose: () => void }) {
+/** Start a new agent run on a chosen project (POST /api/sessions).
+ *  The session launches on the selected tab's machine — its CCAN's adapters
+ *  are what's offered, and the project path is a path on *that* machine. */
+function NewSessionForm({ machine, onClose }: { machine?: Machine; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [adapter, setAdapter] = useState("claude-code");
   const [project, setProject] = useState("");
@@ -29,13 +31,23 @@ function NewSessionForm({ onClose }: { onClose: () => void }) {
 
   // Started adapters with capabilities and model catalogs; only launch-capable
   // ones are offered (an observe-only adapter cannot start a session).
-  const adaptersQuery = useQuery({ queryKey: ["adapters"], queryFn: api.adapters });
+  const adaptersQuery = useQuery({
+    queryKey: ["adapters", machine?.id ?? ""],
+    queryFn: () => api.adapters(machine?.id),
+  });
   const adapters = (adaptersQuery.data?.adapters ?? []).filter((a) => a.capabilities.launch);
   const selected = adapters.find((a) => a.name === adapter);
 
   const launch = useMutation({
     mutationFn: () =>
-      api.launchSession({ adapter, project, prompt, model, permission_mode: mode }),
+      api.launchSession({
+        adapter,
+        project,
+        prompt,
+        model,
+        permission_mode: mode,
+        machine_id: machine?.id ?? "",
+      }),
     onSuccess: (session) => {
       void queryClient.invalidateQueries({ queryKey: ["sessions"] });
       onClose();
@@ -238,7 +250,7 @@ export function FleetView({ machineId = null }: { machineId?: string | null }) {
           {creating ? "Close" : "New session"}
         </button>
       </div>
-      {creating ? <NewSessionForm onClose={() => setCreating(false)} /> : null}
+      {creating ? <NewSessionForm machine={machine} onClose={() => setCreating(false)} /> : null}
       {sessions.length === 0 ? (
         <div className="notice">
           No sessions on {machine ? `“${machine.name}”` : "this machine"} yet. Start a Claude

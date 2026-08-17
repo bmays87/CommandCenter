@@ -197,7 +197,9 @@ class RetentionService:
         cutoff = now - timedelta(days=self._archive_sessions_after_days)
         count = 0
         for session in self._registry.list_sessions():
-            if session.state is SessionState.ARCHIVED:
+            # Never write session facts about another node's sessions: their
+            # own registry is the only writer (ADR-0026).
+            if session.state is SessionState.ARCHIVED or session.node != self._node:
                 continue
             ended = session.ended_at or session.last_activity_at
             if (

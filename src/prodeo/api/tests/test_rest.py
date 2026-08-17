@@ -114,8 +114,10 @@ class Env:
         self.bus = InProcessEventBus()
         self.store = SqliteEventStore(tmp_path / "events.db")
         self.recorder = EventRecorder(self.bus, self.store)
-        self.registry = SessionRegistry(self.bus)
-        self.mediation = MediationService(self.bus)
+        # Same node as create_app below: a mismatch would make every session
+        # look remote and route commands to the (unwired) node gateway.
+        self.registry = SessionRegistry(self.bus, node="test-node")
+        self.mediation = MediationService(self.bus, node="test-node")
         self.adapter = FakeControlAdapter()
         self.manager = AdapterManager(
             self.bus, self.registry, self.mediation, data_dir=tmp_path, discovery_interval=0

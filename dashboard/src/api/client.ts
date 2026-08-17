@@ -146,7 +146,10 @@ export const api = {
   restartServer: () => post<RestartResponse>("/api/system/restart"),
   browse: (path: string) =>
     get<DirectoryListing>(`/api/system/browse?path=${encodeURIComponent(path)}`),
-  adapters: () => get<AdapterListResponse>("/api/adapters"),
+  adapters: (machineId?: string) =>
+    get<AdapterListResponse>(
+      machineId ? `/api/adapters?machine=${encodeURIComponent(machineId)}` : "/api/adapters",
+    ),
   machines: () => get<MachineListResponse>("/api/machines"),
   addMachine: (address: string) => post<Machine>("/api/machines", { address }),
   renameMachine: (id: string, name: string) =>

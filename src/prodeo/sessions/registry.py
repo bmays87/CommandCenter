@@ -251,6 +251,19 @@ class SessionRegistry:
             cursor = batch[-1].id
         _log.info("registry.rebuilt", events=count, sessions=len(self._by_id))
 
+    def apply_remote(self, event: Event) -> None:
+        """Fold one mirrored ``session.*`` fact from another node's registry.
+
+        Node sync (ADR-0026) feeds every mirrored event through here; only
+        remote session facts fold — this node's own events already went
+        through the command paths, and other namespaces have their own
+        consumers. The remote registry stays the only *writer* for its
+        sessions; this is a read-model.
+        """
+        if event.node == self._node or not event.type.startswith("session."):
+            return
+        self._apply(event)
+
     def _apply(self, event: Event) -> None:
         if event.type == ev.SESSION_DISCOVERED:
             session = Session.model_validate(event.payload["session"])

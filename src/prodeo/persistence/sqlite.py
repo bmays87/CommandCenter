@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_type ON events (type, id);
 CREATE INDEX IF NOT EXISTS idx_events_session ON events (session_id, id);
+CREATE INDEX IF NOT EXISTS idx_events_node ON events (node, id);
 """
 
 
@@ -83,6 +84,9 @@ class SqliteEventStore:
         if q.session_id is not None:
             where.append("session_id = ?")
             args.append(q.session_id)
+        if q.node is not None:
+            where.append("node = ?")
+            args.append(q.node)
         if where:
             sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY id DESC" if q.order == "desc" else " ORDER BY id ASC"

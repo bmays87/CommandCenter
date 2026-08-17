@@ -44,6 +44,11 @@ class CcanConfig(BaseModel):
     port: int = DEFAULT_PORT
     node_name: str = Field(default_factory=platform.node)
     data_dir: Path = Field(default_factory=default_data_dir)
+    #: Per-adapter config, keyed by adapter name — same shape as the hub's
+    #: ``PRODEO_ADAPTERS``; flows into each adapter's ``AdapterContext``.
+    adapters: dict[str, dict[str, object]] = Field(default_factory=dict)
+    #: How often adapters re-scan for sessions (0 disables the loop).
+    discovery_interval_s: float = 10.0
 
     @classmethod
     def load(cls, path: Path) -> "CcanConfig":

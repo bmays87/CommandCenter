@@ -18,8 +18,10 @@ def _seed_wheels(wheels_dir: Path) -> None:
     wheels_dir.mkdir(parents=True)
     (wheels_dir / "prodeo-0.1.0-py3-none-any.whl").write_bytes(b"core")
     (wheels_dir / "prodeo_ccan-0.1.0-py3-none-any.whl").write_bytes(b"ccan")
-    # A sibling package must never be mistaken for the core wheel.
-    (wheels_dir / "prodeo_adapter_claude_code-0.1.0-py3-none-any.whl").write_bytes(b"x")
+    # Bundled too: the node ships with the first-party agent adapter.
+    (wheels_dir / "prodeo_adapter_claude_code-0.1.0-py3-none-any.whl").write_bytes(b"a")
+    # A sibling package must never be mistaken for the core wheel or bundled.
+    (wheels_dir / "prodeo_mjolnir-0.1.0-py3-none-any.whl").write_bytes(b"x")
 
 
 def _builder(tmp_path: Path, *, workspace: Path | None) -> tuple[InstallerBuilder, Enrollments]:
@@ -49,8 +51,9 @@ async def test_build_produces_a_paired_installer(tmp_path: Path) -> None:
     assert "install.py" in names
     assert "wheels/prodeo-0.1.0-py3-none-any.whl" in names
     assert "wheels/prodeo_ccan-0.1.0-py3-none-any.whl" in names
-    # Only the two first-party wheels are bundled.
-    assert len([n for n in names if n.startswith("wheels/")]) == 2
+    assert "wheels/prodeo_adapter_claude_code-0.1.0-py3-none-any.whl" in names
+    # Exactly the bundled set — no other workspace packages leak in.
+    assert len([n for n in names if n.startswith("wheels/")]) == 3
 
     assert config["hub"]["node"] == "hub"
     assert "BEGIN CERTIFICATE" in config["hub"]["certificate_pem"]

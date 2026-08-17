@@ -104,6 +104,19 @@ class EventStoreContractSuite:
         assert len(limited) == 1
 
     @pytest.mark.asyncio
+    async def test_filters_by_node(self, store: EventStore) -> None:
+        await store.append(new_event("session.started", node="hub"))
+        await store.append(new_event("session.started", node="worker-01"))
+        await store.append(new_event("tool.started", node="worker-01"))
+
+        remote = await store.query(EventQuery(node="worker-01"))
+        assert [e.node for e in remote] == ["worker-01", "worker-01"]
+
+        # The node-sync cursor: newest event id for one machine (ADR-0026).
+        newest = await store.query(EventQuery(node="worker-01", order="desc", limit=1))
+        assert newest[0].type == "tool.started"
+
+    @pytest.mark.asyncio
     async def test_cursor_pagination_walks_the_whole_log_without_gaps(
         self, store: EventStore
     ) -> None:

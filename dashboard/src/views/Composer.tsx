@@ -12,7 +12,7 @@ function ModelControl({ session }: { session: Session }) {
   const [editing, setEditing] = useState(false);
   const [model, setModel] = useState("");
   const [error, setError] = useState("");
-  const adapters = useQuery({ queryKey: ["adapters"], queryFn: api.adapters });
+  const adapters = useQuery({ queryKey: ["adapters"], queryFn: () => api.adapters() });
   const info = adapters.data?.adapters.find((a) => a.name === session.adapter);
 
   const change = useMutation({
@@ -68,7 +68,7 @@ function ModelControl({ session }: { session: Session }) {
 function ModeControl({ session }: { session: Session }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
-  const adapters = useQuery({ queryKey: ["adapters"], queryFn: api.adapters });
+  const adapters = useQuery({ queryKey: ["adapters"], queryFn: () => api.adapters() });
   const info = adapters.data?.adapters.find((a) => a.name === session.adapter);
   const change = useMutation({
     mutationFn: (mode: string) => api.setSessionPermissionMode(session.id, mode),

@@ -103,11 +103,17 @@ Four workstreams, in order; each leaves the system runnable and green.
   + first-party wheels + hub cert + single-use, node-bound enrollment
   token); Add Machine performs the two-way handshake and records the
   CCAN's certificate for C to pin. Rotation = re-pair (ADR-0025).
-- **C — Node-targeted capabilities + event transport.** Session launch and
-  the machine-bound inventory (ADR-0020) route to the owning CCAN; CCAN
-  events flow into the hub log with their node identity. The broker
-  question (NATS vs Redis Streams vs plain HTTPS ingestion like
-  `/api/voice/events`) gets its ADR here, decided against real traffic.
+- **C — Node-targeted capabilities + event transport.** *Landed 2026-08-17
+  (ADR-0026).* No broker: each CCAN runs the full local stack
+  (`NodeHost`) and keeps its own log; the hub's NodeSync mirrors it over
+  pinned HTTPS long-polls (per-node derived cursor) and folds
+  session/interaction facts into hub read-models — the owning node stays
+  the only writer. Session commands, launches (`machine_id`), adapter
+  listings, and inbox answers route to the owning CCAN via NodeGateway;
+  post-pairing calls pin the certificate recorded at pairing. The
+  installer bundles the claude-code adapter. Remaining machine-bound
+  inventory (browse, extension install onto nodes, host probes, models
+  dir) migrates as needed in D/follow-ups.
 - **D — Deployment recipes.** Hub container; CCAN as a systemd unit /
   Windows service; docs.
 

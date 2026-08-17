@@ -38,8 +38,10 @@ from prodeo.identity import IdentityProvider
 from prodeo.logging import configure_logging
 from prodeo.machines import MachineRegistry
 from prodeo.machines.enrollments import Enrollments
+from prodeo.machines.gateway import NodeGateway
 from prodeo.machines.installers import InstallerBuilder
 from prodeo.machines.pairing import CcanPairingClient
+from prodeo.machines.sync import NodeSync
 from prodeo.mediation import MediationService
 from prodeo.notify import Notifier
 from prodeo.notify.channels import channels_from_config
@@ -102,6 +104,17 @@ class Server:
             enrollments=enrollments,
             hub_node=settings.node_name,
             hub_address_hint=settings.public_url,
+        )
+        # The command plane + event mirror for paired machines (ADR-0026).
+        self.gateway = NodeGateway(self.identity, self.machines)
+        self.node_sync = NodeSync(
+            self.bus,
+            self.store,
+            self.registry,
+            self.mediation,
+            self.machines,
+            self.gateway,
+            node=settings.node_name,
         )
         self.retention = RetentionService(
             self.bus,
@@ -210,6 +223,7 @@ class Server:
                 machines=self.machines,
                 pairing=self.pairing,
                 installers=self.installers,
+                gateway=self.gateway,
             ),
             host=settings.api_host,
             port=settings.api_port,
@@ -278,6 +292,9 @@ class Server:
         await self.scheduler.start()
         await self.summary.start()
         await self.retention.start()
+        # After the registries are rebuilt: mirrored history must fold onto
+        # the state the log already produced, never ahead of it.
+        await self.node_sync.start()
         await self.api.start()
         # Last: supervised apps are HTTP clients of this server and need the
         # resolved port, which only exists once the API is listening.
@@ -293,6 +310,7 @@ class Server:
         # First: kill the children before the server they talk to disappears.
         await self.apps.stop()
         await self.api.stop()
+        await self.node_sync.stop()
         await self.retention.stop()
         await self.summary.stop()
         await self.scheduler.stop()

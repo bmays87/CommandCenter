@@ -112,3 +112,16 @@ class InstallerUnavailableError(ProdeoError):
     The message says why (not a workspace checkout, uv missing, build
     failure) — surfaced to the dashboard as-is.
     """
+
+
+class RemoteNodeError(ProdeoError):
+    """A command forwarded to a machine's CCAN failed (ADR-0026).
+
+    Carries the HTTP status to answer with: the CCAN's own status when it
+    refused (its detail passes through verbatim), 502 when it was
+    unreachable.
+    """
+
+    def __init__(self, detail: str, *, status_code: int = 502) -> None:
+        super().__init__(detail)
+        self.status_code = status_code

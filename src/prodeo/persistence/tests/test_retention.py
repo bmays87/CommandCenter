@@ -54,7 +54,8 @@ def _service(
     return RetentionService(
         bus,
         store,
-        registry or SessionRegistry(bus),
+        # Same node as the service: archival only touches its own sessions.
+        registry or SessionRegistry(bus, node="test"),
         archive_dir=tmp_path / "archive",
         rules=rules,
         archive_sessions_after_days=archive_sessions_after_days,
@@ -169,7 +170,7 @@ async def test_old_finished_sessions_move_to_archived(
     store: SqliteEventStore, tmp_path: Path
 ) -> None:
     bus = InProcessEventBus()
-    registry = SessionRegistry(bus)
+    registry = SessionRegistry(bus, node="test")
     old_done = await registry.upsert_discovered("a", SessionDescriptor(native_id="old"))
     await registry.observe_state(old_done.id, SessionState.COMPLETED)
     old_done.ended_at = NOW - timedelta(days=20)

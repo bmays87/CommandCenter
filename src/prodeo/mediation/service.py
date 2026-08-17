@@ -105,6 +105,7 @@ class MediationService:
             session_id=request.session_id,
             adapter=request.adapter,
             native_id=request.native_id,
+            node=self._node,
             kind=request.kind,
             title=request.title,
             body=request.body,
@@ -206,7 +207,13 @@ class MediationService:
                 self._apply(event)
                 count += 1
             cursor = batch[-1].id
-        orphans = [i for i in self._by_id.values() if i.status is InteractionStatus.PENDING]
+        # Only this node's pendings: a remote machine's mediation service is
+        # alive and still waiting — its interactions are not orphans here.
+        orphans = [
+            i
+            for i in self._by_id.values()
+            if i.status is InteractionStatus.PENDING and i.node == self._node
+        ]
         for interaction in orphans:
             await self._cancel(interaction, reason="orphaned_by_restart")
         _log.info(
@@ -215,6 +222,19 @@ class MediationService:
             interactions=len(self._by_id),
             orphans_cancelled=len(orphans),
         )
+
+    def apply_remote(self, event: Event) -> None:
+        """Fold one mirrored ``interaction.*`` fact from another node.
+
+        Same fold as rebuild (ADR-0026): no deliver callback, no timeout
+        task — the owning node runs both; the hub only tracks state so the
+        inbox can show the card and route the answer. Events from this node
+        (or other namespaces) are ignored, so node sync can feed the whole
+        mirrored stream through unfiltered.
+        """
+        if event.node == self._node or not event.type.startswith("interaction."):
+            return
+        self._apply(event)
 
     def _apply(self, event: Event) -> None:
         payload = event.payload

@@ -21,7 +21,7 @@ import structlog
 from pydantic import BaseModel
 
 from prodeo.errors import PairingError
-from prodeo.identity import IdentityProvider
+from prodeo.identity import Identity, IdentityProvider
 from prodeo.machines.enrollments import Enrollments
 
 _log = structlog.get_logger(__name__)
@@ -123,6 +123,29 @@ class CcanPairingClient:
             version=body.version,
             certificate_pem=body.certificate_pem,
         )
+
+
+def pinned_client(
+    identity: Identity, certificate_pem: str, *, timeout_s: float = 30.0
+) -> httpx.AsyncClient:
+    """An HTTPS client for post-pairing calls to one CCAN.
+
+    Presents the hub certificate (the CCAN answers no one else) and verifies
+    the peer against the certificate recorded at pairing — the pin that
+    closes the trust-on-first-use window ADR-0025 left open. ``cadata`` is
+    the whole trust store, so exactly that node's key passes; hostname
+    checking is off because the pin is to the key, not a name.
+    """
+    context = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH, cadata=certificate_pem)
+    context.check_hostname = False
+    context.load_cert_chain(certfile=identity.cert_path, keyfile=identity.key_path)
+    return httpx.AsyncClient(verify=context, timeout=timeout_s)
+
+
+def node_url(address: str, default_port: int = DEFAULT_CCAN_PORT) -> str:
+    """Base URL for a machine's CCAN from its recorded address."""
+    host, port = _split_address(address, default_port)
+    return f"https://{host}:{port}"
 
 
 def _split_address(address: str, default_port: int) -> tuple[str, int]:

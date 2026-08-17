@@ -50,6 +50,7 @@ from prodeo.errors import (
     NotEntitledError,
     PairingError,
     ProdeoError,
+    RemoteNodeError,
     RequirementsNotMetError,
     UnknownAdapterError,
     UnknownAppError,
@@ -74,6 +75,7 @@ from prodeo.extensions import (
     InstallResult,
 )
 from prodeo.machines import Machine, MachineRegistry
+from prodeo.machines.gateway import NodeChannel
 from prodeo.machines.installers import InstallerBuilder
 from prodeo.machines.pairing import NodePairing
 from prodeo.mediation import (
@@ -198,6 +200,9 @@ class LaunchRequest(BaseModel):
     model: str = ""
     permission_mode: str = ""
     options: dict[str, Any] = Field(default_factory=dict)
+    #: Which machine runs it (a Machine id); empty = the hub's own. Remote
+    #: launches are forwarded to the owning CCAN (ADR-0026).
+    machine_id: str = ""
 
 
 class PromptRequest(BaseModel):
@@ -462,14 +467,32 @@ def create_app(
     pairing: NodePairing | None = None,
     #: Builds CCAN installer zips. None = the installer list explains itself.
     installers: InstallerBuilder | None = None,
+    #: Forwards commands to paired machines (ADR-0026). None = remote 503s.
+    gateway: NodeChannel | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Prodeo Command Center", version=version)
     auth = Depends(make_auth_dependency(api_token))
 
     @app.exception_handler(ProdeoError)
     async def domain_error(_request: Request, exc: ProdeoError) -> JSONResponse:
+        if isinstance(exc, RemoteNodeError):  # carries the owning CCAN's status
+            return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
         status = _ERROR_STATUS.get(type(exc), 500)
         return JSONResponse(status_code=status, content={"detail": str(exc)})
+
+    def _gateway() -> NodeChannel:
+        if gateway is None:  # not wired (schema export, focused tests)
+            raise HTTPException(
+                status_code=503, detail="node forwarding is not available on this server"
+            )
+        return gateway
+
+    async def _forward_session_command(
+        session: Session, path: str, payload: dict[str, Any] | None = None
+    ) -> Session:
+        """Route a session command to the CCAN owning it (ADR-0026)."""
+        data = await _gateway().forward(session.node, "POST", path, payload)
+        return Session.model_validate(data)
 
     @app.get("/api/health", response_model=HealthResponse)
     async def health() -> HealthResponse:  # health is unauthenticated by design
@@ -548,7 +571,27 @@ def create_app(
         dependencies=[auth],
     )
     async def answer_interaction(interaction_id: str, body: AnswerRequest) -> Interaction:
-        """Resolve an interaction; the first answer wins (409 afterwards)."""
+        """Resolve an interaction; the first answer wins (409 afterwards).
+
+        An interaction opened on a paired machine routes to its CCAN — the
+        agent's waiting callback lives in that process (ADR-0026); the
+        resolution mirrors back through node sync.
+        """
+        interaction = mediation.get(interaction_id)
+        if interaction is not None and interaction.node != node:
+            data = await _gateway().forward(
+                interaction.node,
+                "POST",
+                f"/ccan/v1/interactions/{interaction_id}/answer",
+                {
+                    "decision": body.decision,
+                    "text": body.text,
+                    "updated_input": body.updated_input,
+                    "selections": body.selections,
+                    "answered_by": "api",
+                },
+            )
+            return Interaction.model_validate(data)
         answer = Answer(
             decision=body.decision,
             text=body.text,
@@ -610,7 +653,30 @@ def create_app(
 
     @app.post("/api/sessions", response_model=Session, status_code=201, dependencies=[auth])
     async def launch_session(body: LaunchRequest) -> Session:
-        """Launch a new agent run through a control-capable adapter."""
+        """Launch a new agent run, on this machine or a paired one.
+
+        ``machine_id`` picks where (empty = the hub's own machine): a remote
+        launch forwards to the owning CCAN, and the session comes back — and
+        keeps arriving, via node sync — under that node's identity.
+        """
+        machine = _machines().get(body.machine_id) if body.machine_id else None
+        if body.machine_id and machine is None:
+            raise HTTPException(status_code=404, detail="unknown machine")
+        if machine is not None and machine.node != node:
+            data = await _gateway().forward(
+                machine.node,
+                "POST",
+                "/ccan/v1/sessions",
+                {
+                    "adapter": body.adapter,
+                    "project": body.project,
+                    "prompt": body.prompt,
+                    "model": body.model,
+                    "permission_mode": body.permission_mode,
+                    "options": body.options,
+                },
+            )
+            return Session.model_validate(data)
         spec = LaunchSpec(
             project=body.project,
             prompt=body.prompt,
@@ -626,11 +692,15 @@ def create_app(
         dependencies=[auth],
     )
     async def terminate_session(session_id: str) -> Session:
-        await manager.terminate(session_id)
         session = registry.get(session_id)
-        if session is None:  # pragma: no cover - terminate already 404s first
+        if session is None:
             raise HTTPException(status_code=404, detail="unknown session")
-        return session
+        if session.node != node:
+            return await _forward_session_command(
+                session, f"/ccan/v1/sessions/{session_id}/terminate"
+            )
+        await manager.terminate(session_id)
+        return registry.get(session_id) or session
 
     @app.post(
         "/api/sessions/{session_id}/prompt",
@@ -638,11 +708,15 @@ def create_app(
         dependencies=[auth],
     )
     async def prompt_session(session_id: str, body: PromptRequest) -> Session:
-        await manager.send_prompt(session_id, body.prompt)
         session = registry.get(session_id)
-        if session is None:  # pragma: no cover - send_prompt already 404s first
+        if session is None:
             raise HTTPException(status_code=404, detail="unknown session")
-        return session
+        if session.node != node:
+            return await _forward_session_command(
+                session, f"/ccan/v1/sessions/{session_id}/prompt", {"prompt": body.prompt}
+            )
+        await manager.send_prompt(session_id, body.prompt)
+        return registry.get(session_id) or session
 
     @app.post(
         "/api/sessions/{session_id}/model",
@@ -651,11 +725,15 @@ def create_app(
     )
     async def set_session_model(session_id: str, body: SetModelRequest) -> Session:
         """Switch the model a controlled session runs on, mid-session."""
-        await manager.set_model(session_id, body.model)
         session = registry.get(session_id)
-        if session is None:  # pragma: no cover - set_model already 404s first
+        if session is None:
             raise HTTPException(status_code=404, detail="unknown session")
-        return session
+        if session.node != node:
+            return await _forward_session_command(
+                session, f"/ccan/v1/sessions/{session_id}/model", {"model": body.model}
+            )
+        await manager.set_model(session_id, body.model)
+        return registry.get(session_id) or session
 
     @app.post(
         "/api/sessions/{session_id}/permission-mode",
@@ -671,11 +749,17 @@ def create_app(
         (auto-accept edits), or Auto (bypass checks). Applies to the *running*
         agent; a launch sets the starting mode via ``LaunchRequest``.
         """
-        await manager.set_permission_mode(session_id, body.mode)
         session = registry.get(session_id)
-        if session is None:  # pragma: no cover - set_permission_mode 404s first
+        if session is None:
             raise HTTPException(status_code=404, detail="unknown session")
-        return session
+        if session.node != node:
+            return await _forward_session_command(
+                session,
+                f"/ccan/v1/sessions/{session_id}/permission-mode",
+                {"mode": body.mode},
+            )
+        await manager.set_permission_mode(session_id, body.mode)
+        return registry.get(session_id) or session
 
     @app.post(
         "/api/sessions/{session_id}/interrupt",
@@ -688,11 +772,15 @@ def create_app(
         Unlike ``/terminate``, the session stays alive and keeps any queued
         follow-up prompt — this is the composer's Stop button.
         """
-        await manager.interrupt(session_id)
         session = registry.get(session_id)
-        if session is None:  # pragma: no cover - interrupt already 404s first
+        if session is None:
             raise HTTPException(status_code=404, detail="unknown session")
-        return session
+        if session.node != node:
+            return await _forward_session_command(
+                session, f"/ccan/v1/sessions/{session_id}/interrupt"
+            )
+        await manager.interrupt(session_id)
+        return registry.get(session_id) or session
 
     @app.get(
         "/api/sessions/{session_id}/context",
@@ -706,7 +794,13 @@ def create_app(
         missing fields become zeros rather than an error, and the pill hides
         itself when nothing useful comes back.
         """
-        raw = await manager.context_usage(session_id)
+        session = registry.get(session_id)
+        if session is not None and session.node != node:
+            raw = await _gateway().forward(
+                session.node, "GET", f"/ccan/v1/sessions/{session_id}/context"
+            )
+        else:
+            raw = await manager.context_usage(session_id)
         return ContextUsage(
             percentage=float(raw.get("percentage", 0) or 0),
             total_tokens=int(raw.get("totalTokens", 0) or 0),
@@ -806,8 +900,18 @@ def create_app(
         return event
 
     @app.get("/api/adapters", response_model=AdapterListResponse, dependencies=[auth])
-    async def list_adapters() -> AdapterListResponse:
-        """Started adapters with capabilities and declared model catalogs."""
+    async def list_adapters(machine: str | None = None) -> AdapterListResponse:
+        """Started adapters with capabilities and declared model catalogs.
+
+        ``machine`` (a Machine id) asks a paired machine's CCAN for *its*
+        adapters instead — what the new-session form shows per tab.
+        """
+        target = _machines().get(machine) if machine else None
+        if machine and target is None:
+            raise HTTPException(status_code=404, detail="unknown machine")
+        if target is not None and target.node != node:
+            data = await _gateway().forward(target.node, "GET", "/ccan/v1/adapters")
+            return AdapterListResponse.model_validate(data)
         return AdapterListResponse(adapters=manager.describe_adapters())
 
     def _machines() -> MachineRegistry:

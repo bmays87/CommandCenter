@@ -43,9 +43,9 @@ def main() -> int:
         print(f"error: Python 3.12+ required, this is {sys.version.split()[0]}")
         return 1
     here = Path(__file__).resolve().parent
-    wheels = sorted((here / "wheels").glob("prodeo_ccan-*.whl"))
+    wheels = sorted((here / "wheels").glob("*.whl"))
     config = here / "ccan.json"
-    if not wheels or not config.is_file():
+    if not any(w.name.startswith("prodeo_ccan-") for w in wheels) or not config.is_file():
         print("error: run install.py from the unpacked installer directory")
         return 1
 
@@ -69,7 +69,7 @@ def main() -> int:
             "--quiet",
             "--find-links",
             str(here / "wheels"),
-            str(wheels[-1]),
+            *(str(w) for w in wheels),
         ],
         check=False,
     )
