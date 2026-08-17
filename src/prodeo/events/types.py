@@ -68,6 +68,13 @@ SCHEDULE_CREATED: Final = "schedule.created"
 SCHEDULE_TRIGGERED: Final = "schedule.triggered"
 SCHEDULE_DELETED: Final = "schedule.deleted"
 
+# machines (phase 6, ADR-0024): the hub's catalogue of agent machines. The
+# Machine Registry is the only writer and folds these on boot, so a rename is
+# a durable fact every dashboard client sees.
+MACHINE_ADDED: Final = "machine.added"
+MACHINE_RENAMED: Final = "machine.renamed"
+MACHINE_REMOVED: Final = "machine.removed"
+
 # voice (phase 4). Emitted by voice clients (e.g. Mjölnir) through
 # ``POST /api/voice/events``; ``source`` is ``voice:<client_id>``.
 VOICE_WAKE_WORD_DETECTED: Final = "voice.wake_word_detected"

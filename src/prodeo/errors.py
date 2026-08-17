@@ -83,3 +83,15 @@ class InteractionAlreadyResolvedError(ProdeoError):
         super().__init__(f"interaction {interaction_id} already resolved ({status})")
         self.interaction_id = interaction_id
         self.status = status
+
+
+class UnknownMachineError(ProdeoError):
+    """An operation referenced a machine the registry does not know."""
+
+
+class MachineConflictError(ProdeoError):
+    """A machine mutation conflicts with the catalogue's invariants.
+
+    Raised for registering a node twice and for removing the hub's own
+    machine (ADR-0024); the message is user-facing and says which.
+    """

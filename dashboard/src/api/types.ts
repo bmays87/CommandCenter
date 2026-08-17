@@ -29,6 +29,8 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 export type RestartResponse = components["schemas"]["RestartResponse"];
 export type DirectoryEntry = components["schemas"]["DirectoryEntry"];
 export type DirectoryListing = components["schemas"]["DirectoryListing"];
+export type Machine = components["schemas"]["Machine"];
+export type CcanInstaller = components["schemas"]["CcanInstaller"];
 
 export const ACTIVE_STATES: readonly string[] = [
   "running",

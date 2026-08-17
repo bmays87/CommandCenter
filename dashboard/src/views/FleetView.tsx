@@ -5,7 +5,10 @@ import { api } from "../api/client";
 import { isActive, type Session } from "../api/types";
 import { projectName, timeAgo } from "../format";
 import { useLiveEvents } from "../live";
+import { AddMachineDialog } from "./AddMachineDialog";
+import { CcanInstallers } from "./CcanInstallers";
 import { DirectoryPicker } from "./DirectoryPicker";
+import { selectMachine } from "./MachineTabs";
 import { ModelPicker } from "./ModelPicker";
 import { ModePicker, modeLabel } from "./ModePicker";
 
@@ -166,14 +169,16 @@ function SessionCard({ session, onArchive }: { session: Session; onArchive?: () 
   );
 }
 
-export function FleetView() {
+export function FleetView({ machineId = null }: { machineId?: string | null }) {
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
+  const [addingMachine, setAddingMachine] = useState(false);
   const { data, error, isLoading } = useQuery({
     queryKey: ["sessions"],
     queryFn: api.sessions,
     refetchInterval: 15_000, // fallback; WS invalidation is the fast path
   });
+  const machinesQuery = useQuery({ queryKey: ["machines"], queryFn: api.machines });
 
   useLiveEvents("session.*", () => {
     void queryClient.invalidateQueries({ queryKey: ["sessions"] });
@@ -189,7 +194,34 @@ export function FleetView() {
   if (isLoading) return <div className="notice">Loading sessions…</div>;
   if (error) return <div className="notice error">{String(error)}</div>;
 
-  const sessions = data?.sessions ?? [];
+  const machines = machinesQuery.data?.machines ?? [];
+  if (machinesQuery.data && machines.length === 0) {
+    // No machine runs agents yet (a hub-only deployment): the page is the
+    // onboarding flow — pair a machine, or install CCAN on one first.
+    return (
+      <div className="machine-empty">
+        <div className="machine-empty-row">
+          <button type="button" onClick={() => setAddingMachine(true)}>
+            Add Machine
+          </button>
+          <p className="machine-empty-desc">
+            Adding a machine requires the FQDN or IP address of a machine running CCAN — the
+            Command Center Agent Node. A CCAN answers only the Command Center whose installer
+            set it up.
+          </p>
+        </div>
+        <CcanInstallers />
+        {addingMachine ? <AddMachineDialog onClose={() => setAddingMachine(false)} /> : null}
+      </div>
+    );
+  }
+
+  const machine = selectMachine(machines, machineId);
+  // Tab scoping: only this machine's sessions. Until machines load, show
+  // everything rather than a flash of an empty fleet.
+  const sessions = (data?.sessions ?? []).filter(
+    (s) => machine === undefined || s.node === machine.node,
+  );
   // Sessions needing a human float to the top of the active grid. Archived
   // ones are "cleaned up" — hidden from the fleet, still in the event log.
   const active = sessions
@@ -209,8 +241,8 @@ export function FleetView() {
       {creating ? <NewSessionForm onClose={() => setCreating(false)} /> : null}
       {sessions.length === 0 ? (
         <div className="notice">
-          No sessions yet. Start a Claude Code session and it will appear here — or launch one
-          with New session.
+          No sessions on {machine ? `“${machine.name}”` : "this machine"} yet. Start a Claude
+          Code session there and it will appear here — or launch one with New session.
         </div>
       ) : null}
       {active.length > 0 ? (

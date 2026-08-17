@@ -17,6 +17,13 @@ change — never a private backdoor.
 
 1. **Fleet view** — every session as a card: agent kind, project, state, last
    activity, attention flag. Sessions needing a human float to the top.
+   Since Phase 6 the fleet is **per-machine**: a tab strip directly below the
+   header nav shows one tab per machine (from `/api/machines`, first added
+   first), each scoping the session grids by `Session.node`. Tabs are
+   renameable in place (hub-side, `PUT /api/machines/{id}/name`, so every
+   client sees the name); "+" opens the Add Machine pairing dialog, and a
+   hub with no machines shows the Add Machine / Download CCAN Installer
+   empty state instead (ADR-0024).
 2. **Session view** — timeline of that session's events, live output tail, pending
    interactions with answer controls (rendered per adapter capabilities).
 3. **Interaction inbox** — all unanswered permissions/questions across sessions.

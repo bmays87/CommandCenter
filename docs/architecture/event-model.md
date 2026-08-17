@@ -43,6 +43,7 @@ Rules:
 | `adapter` | `loaded`, `unloaded`, `error`, `discovery_completed` |
 | `notification` | `sent`, `failed`, `suppressed` *(phase 4)* |
 | `schedule` | `created`, `triggered`, `deleted` |
+| `machine` *(phase 6)* | `added`, `renamed`, `removed` |
 | `summary` *(phase 3)* | `generated` |
 | `system` | `started`, `stopping`, `plugin_loaded`, `plugin_failed`, `retention_completed` |
 | `voice` *(phase 4)* | `wake_word_detected`, `command_received`, `transcription_completed`, `speech_started`, `speech_finished` |
@@ -141,6 +142,25 @@ and rebuilds its catalogue from them on boot. Payloads (v1):
 Cron expressions are standard 5-field (plus `@daily`-style aliases), evaluated
 in `PRODEO_SCHEDULER_TIMEZONE` (default: the server's local timezone).
 
+## Machine Events (Phase 6)
+
+The Machine Registry is the only writer of `machine.*` events
+(`source: "machine-registry"`) and rebuilds its catalogue from them on boot
+(ADR-0024). The hub's own machine is added automatically on first boot;
+remote machines are added by CCAN pairing. Payloads (v1):
+
+- `machine.added` — `{"machine": {id, node, name, address, added_at}}` (full
+  Machine dump; `address` is the CCAN's FQDN/IP, null for the hub's own
+  machine).
+- `machine.renamed` — `{"machine_id", "name"}`. Display name only; `node`
+  identity never changes, so history stays attributed.
+- `machine.removed` — `{"machine_id"}`. Forgets the machine; its sessions
+  and events stay in the log.
+
+Relatedly, `Session` carries `node` (additive, default `"local"`): the
+registry stamps the owning machine's identity at creation, and the dashboard
+scopes each machine tab by it.
+
 ## Summary Events (Phase 3)
 
 The Summary Service publishes one `summary.generated` per scheduled digest run
@@ -164,10 +184,10 @@ events are appended to monthly gzip JSONL archives
 deletion. Two safety rails:
 
 - **Rebuild-critical namespaces are never deleted** — `session.*`,
-  `schedule.*`, and `interaction.*` are how the registry, scheduler, and
-  mediation reconstruct state on boot; retention skips them regardless of the
-  rules. The log's bulk (`agent.*`, `tool.*`, `notification.*`) is what
-  expires.
+  `schedule.*`, `interaction.*`, and `machine.*` are how the registry,
+  scheduler, mediation, and machine catalogue reconstruct state on boot;
+  retention skips them regardless of the rules. The log's bulk (`agent.*`,
+  `tool.*`, `notification.*`) is what expires.
 - Sessions finished longer than `PRODEO_RETENTION_ARCHIVE_SESSIONS_AFTER_DAYS`
   ago transition to `archived` through the normal state machine.
 

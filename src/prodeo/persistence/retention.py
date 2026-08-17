@@ -3,10 +3,11 @@ long-finished sessions.
 
 Retention is opt-in (``PRODEO_RETENTION_RULES``) and deliberately conservative:
 
-- Rebuild-critical namespaces (``session.*``, ``schedule.*``, ``interaction.*``)
-  are never deleted, whatever the rules say — the Session Registry, Scheduler,
-  and Mediation Service reconstruct their catalogues from those events on boot.
-  They are low-volume; the log's bulk is agent output and tool activity.
+- Rebuild-critical namespaces (``session.*``, ``schedule.*``, ``interaction.*``,
+  ``machine.*``) are never deleted, whatever the rules say — the Session
+  Registry, Scheduler, Mediation Service, and Machine Registry reconstruct
+  their catalogues from those events on boot. They are low-volume; the log's
+  bulk is agent output and tool activity.
 - Expired events are appended to monthly gzip JSONL archives
   (``archive/events-YYYY-MM.jsonl.gz``) *before* deletion, unless a rule opts
   out with ``archive: false``. Archives are plain event-envelope JSON, one per
@@ -49,7 +50,7 @@ _log = structlog.get_logger(__name__)
 _SOURCE = "retention"
 
 #: Namespaces the core rebuilds state from; retention never deletes them.
-PROTECTED_PREFIXES = ("session.", "schedule.", "interaction.")
+PROTECTED_PREFIXES = ("session.", "schedule.", "interaction.", "machine.")
 
 _BATCH = 500
 

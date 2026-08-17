@@ -44,6 +44,7 @@ from prodeo.errors import (
     IllegalTransitionError,
     InteractionAlreadyResolvedError,
     InvalidScheduleError,
+    MachineConflictError,
     NotEntitledError,
     ProdeoError,
     RequirementsNotMetError,
@@ -51,6 +52,7 @@ from prodeo.errors import (
     UnknownAppError,
     UnknownExtensionError,
     UnknownInteractionError,
+    UnknownMachineError,
     UnknownScheduleError,
     UnknownSessionError,
 )
@@ -68,6 +70,7 @@ from prodeo.extensions import (
     ExtensionSummary,
     InstallResult,
 )
+from prodeo.machines import Machine, MachineRegistry
 from prodeo.mediation import (
     Answer,
     Interaction,
@@ -92,6 +95,9 @@ _ERROR_STATUS: dict[type[ProdeoError], int] = {
     UnknownScheduleError: 404,
     UnknownExtensionError: 404,
     UnknownAppError: 404,
+    UnknownMachineError: 404,
+    #: Conflict - registering a node twice, or removing the hub's own machine.
+    MachineConflictError: 409,
     UnknownAdapterError: 400,
     CapabilityNotSupportedError: 400,
     InvalidScheduleError: 400,
@@ -275,6 +281,41 @@ class AdapterListResponse(BaseModel):
     adapters: list[AdapterInfo]
 
 
+class MachineListResponse(BaseModel):
+    """Known agent machines, first added first — the dashboard's tab order."""
+
+    machines: list[Machine]
+
+
+class AddMachineRequest(BaseModel):
+    """FQDN or IP address of a machine already running CCAN."""
+
+    address: str = Field(min_length=1)
+
+
+class RenameMachineRequest(BaseModel):
+    """A machine tab's new display name; node identity never changes."""
+
+    name: str = Field(min_length=1)
+
+
+class CcanInstaller(BaseModel):
+    """One CCAN installer this hub can produce for download (ADR-0024)."""
+
+    id: str
+    label: str
+    #: ``any`` for the platform-agnostic build, else ``windows``/``linux``/``macos``.
+    platform: str
+    #: Download path on this hub.
+    url: str
+
+
+class CcanInstallerListResponse(BaseModel):
+    installers: list[CcanInstaller]
+    #: Human-readable explanation when the list is empty.
+    note: str = ""
+
+
 class ExtensionListResponse(BaseModel):
     extensions: list[ExtensionSummary]
 
@@ -404,6 +445,8 @@ def create_app(
     #: Injected by the composition root; records the intent and releases the
     #: idle wait in ``prodeo.server.run``. None = restart is not offered.
     restart_fn: Callable[[], None] | None = None,
+    #: The machine catalogue (ADR-0024). None = machines endpoints answer 503.
+    machines: MachineRegistry | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Prodeo Command Center", version=version)
     auth = Depends(make_auth_dependency(api_token))
@@ -751,6 +794,62 @@ def create_app(
     async def list_adapters() -> AdapterListResponse:
         """Started adapters with capabilities and declared model catalogs."""
         return AdapterListResponse(adapters=manager.describe_adapters())
+
+    def _machines() -> MachineRegistry:
+        if machines is None:  # not wired (schema export, focused tests)
+            raise HTTPException(status_code=503, detail="machine registry not configured")
+        return machines
+
+    @app.get("/api/machines", response_model=MachineListResponse, dependencies=[auth])
+    async def list_machines() -> MachineListResponse:
+        """Known agent machines, in tab order (first added first)."""
+        return MachineListResponse(machines=_machines().list_machines())
+
+    @app.post("/api/machines", response_model=Machine, status_code=201, dependencies=[auth])
+    async def add_machine(body: AddMachineRequest) -> Machine:
+        """Pair with the CCAN at ``address`` and register its machine.
+
+        The pairing handshake ships with the CCAN package (the next Phase 6
+        workstream); until it lands this hub cannot reach out to a node, so
+        the answer is an honest 501 rather than a fake success. The request
+        shape is final — the dashboard flow is unchanged when pairing arrives.
+        """
+        _require_write()
+        _machines()
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                f"cannot pair with {body.address!r}: CCAN pairing is not part of "
+                "this build yet — the CCAN package is the next Phase 6 workstream"
+            ),
+        )
+
+    @app.put("/api/machines/{machine_id}/name", response_model=Machine, dependencies=[auth])
+    async def rename_machine(machine_id: str, body: RenameMachineRequest) -> Machine:
+        """Rename a machine's tab; display name only, history keeps its node."""
+        _require_write()
+        return await _machines().rename(machine_id, body.name)
+
+    @app.delete("/api/machines/{machine_id}", status_code=204, dependencies=[auth])
+    async def remove_machine(machine_id: str) -> None:
+        """Forget a machine (409 for the hub's own); its history stays queryable."""
+        _require_write()
+        await _machines().remove(machine_id)
+
+    @app.get(
+        "/api/ccan/installers",
+        response_model=CcanInstallerListResponse,
+        dependencies=[auth],
+    )
+    async def list_ccan_installers() -> CcanInstallerListResponse:
+        """CCAN installers this hub can produce (empty until the CCAN package lands)."""
+        return CcanInstallerListResponse(
+            installers=[],
+            note=(
+                "This build cannot produce CCAN installers yet; they arrive "
+                "with the CCAN package in the next Phase 6 workstream."
+            ),
+        )
 
     def _extensions() -> ExtensionService:
         if extensions is None:  # not wired (schema export, focused tests)

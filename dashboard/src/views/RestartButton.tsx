@@ -8,7 +8,13 @@ const WAIT_TIMEOUT_MS = 90_000;
 const POLL_INTERVAL_MS = 750;
 
 /** Queries whose answers are decided at boot, so a restart can change them. */
-const BOOT_SCOPED_QUERIES = [["extensions"], ["apps"], ["extension-catalog"], ["environment"]];
+const BOOT_SCOPED_QUERIES = [
+  ["extensions"],
+  ["apps"],
+  ["extension-catalog"],
+  ["environment"],
+  ["machines"],
+];
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

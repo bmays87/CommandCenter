@@ -121,6 +121,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ccan/installers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ccan Installers
+         * @description CCAN installers this hub can produce (empty until the CCAN package lands).
+         */
+        get: operations["list_ccan_installers_api_ccan_installers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events": {
         parameters: {
             query?: never;
@@ -403,6 +423,75 @@ export interface paths {
          * @description Resolve an interaction; the first answer wins (409 afterwards).
          */
         post: operations["answer_interaction_api_interactions__interaction_id__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/machines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Machines
+         * @description Known agent machines, in tab order (first added first).
+         */
+        get: operations["list_machines_api_machines_get"];
+        put?: never;
+        /**
+         * Add Machine
+         * @description Pair with the CCAN at ``address`` and register its machine.
+         *
+         *     The pairing handshake ships with the CCAN package (the next Phase 6
+         *     workstream); until it lands this hub cannot reach out to a node, so
+         *     the answer is an honest 501 rather than a fake success. The request
+         *     shape is final — the dashboard flow is unchanged when pairing arrives.
+         */
+        post: operations["add_machine_api_machines_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/machines/{machine_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Machine
+         * @description Forget a machine (409 for the hub's own); its history stays queryable.
+         */
+        delete: operations["remove_machine_api_machines__machine_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/machines/{machine_id}/name": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rename Machine
+         * @description Rename a machine's tab; display name only, history keeps its node.
+         */
+        put: operations["rename_machine_api_machines__machine_id__name_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -911,6 +1000,14 @@ export interface components {
             adapters: components["schemas"]["AdapterInfo"][];
         };
         /**
+         * AddMachineRequest
+         * @description FQDN or IP address of a machine already running CCAN.
+         */
+        AddMachineRequest: {
+            /** Address */
+            address: string;
+        };
+        /**
          * Answer
          * @description A human's resolution of an interaction.
          *
@@ -1167,6 +1264,30 @@ export interface components {
              * @default
              */
             version: string;
+        };
+        /**
+         * CcanInstaller
+         * @description One CCAN installer this hub can produce for download (ADR-0024).
+         */
+        CcanInstaller: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Platform */
+            platform: string;
+            /** Url */
+            url: string;
+        };
+        /** CcanInstallerListResponse */
+        CcanInstallerListResponse: {
+            /** Installers */
+            installers: components["schemas"]["CcanInstaller"][];
+            /**
+             * Note
+             * @default
+             */
+            note: string;
         };
         /**
          * ClientPresence
@@ -1667,7 +1788,7 @@ export interface components {
         HealthResponse: {
             /**
              * Boot Id
-             * @default 01M02YA5P5VGF6VWW4P4HJXYGS
+             * @default 01M02ZGC59GBA1CME0609YNJW7
              */
             boot_id: string;
             /** Node */
@@ -1822,6 +1943,38 @@ export interface components {
             prompt: string;
         };
         /**
+         * Machine
+         * @description One agent machine known to the hub.
+         *
+         *     ``node`` is the machine's identity (its ``PRODEO_NODE_NAME``, stamped on
+         *     every event it originates); ``name`` is the display name shown on its
+         *     dashboard tab and is the only renameable field. Renaming never touches
+         *     ``node`` — history stays attributed.
+         */
+        Machine: {
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at?: string;
+            /** Address */
+            address?: string | null;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Node */
+            node: string;
+        };
+        /**
+         * MachineListResponse
+         * @description Known agent machines, first added first — the dashboard's tab order.
+         */
+        MachineListResponse: {
+            /** Machines */
+            machines: components["schemas"]["Machine"][];
+        };
+        /**
          * ModelInfo
          * @description One model an adapter can launch/switch to.
          *
@@ -1917,6 +2070,14 @@ export interface components {
             label: string;
         };
         /**
+         * RenameMachineRequest
+         * @description A machine tab's new display name; node identity never changes.
+         */
+        RenameMachineRequest: {
+            /** Name */
+            name: string;
+        };
+        /**
          * RestartResponse
          * @description Acknowledges a restart request; the process is still up when it is sent.
          */
@@ -1989,6 +2150,11 @@ export interface components {
             model?: string | null;
             /** Native Id */
             native_id: string;
+            /**
+             * Node
+             * @default local
+             */
+            node: string;
             /**
              * Permission Mode
              * @default
@@ -2251,6 +2417,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ccan_installers_api_ccan_installers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CcanInstallerListResponse"];
                 };
             };
         };
@@ -2751,6 +2937,123 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Interaction"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_machines_api_machines_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MachineListResponse"];
+                };
+            };
+        };
+    };
+    add_machine_api_machines_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddMachineRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Machine"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_machine_api_machines__machine_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                machine_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_machine_api_machines__machine_id__name_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                machine_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameMachineRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Machine"];
                 };
             };
             /** @description Validation Error */

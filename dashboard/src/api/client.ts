@@ -4,8 +4,10 @@ import type {
   AppStatus,
   AssetResult,
   AssetStatus,
+  CcanInstaller,
   ContextUsage,
   DirectoryListing,
+  Machine,
   EnvironmentReport,
   HealthResponse,
   RestartResponse,
@@ -122,12 +124,27 @@ export interface AssetListResponse {
   assets: AssetStatus[];
 }
 
+export interface MachineListResponse {
+  machines: Machine[];
+}
+
+export interface CcanInstallerListResponse {
+  installers: CcanInstaller[];
+  note: string;
+}
+
 export const api = {
   health: () => get<HealthResponse>("/api/health"),
   restartServer: () => post<RestartResponse>("/api/system/restart"),
   browse: (path: string) =>
     get<DirectoryListing>(`/api/system/browse?path=${encodeURIComponent(path)}`),
   adapters: () => get<AdapterListResponse>("/api/adapters"),
+  machines: () => get<MachineListResponse>("/api/machines"),
+  addMachine: (address: string) => post<Machine>("/api/machines", { address }),
+  renameMachine: (id: string, name: string) =>
+    put<Machine>(`/api/machines/${id}/name`, { name }),
+  removeMachine: (id: string) => del(`/api/machines/${id}`),
+  ccanInstallers: () => get<CcanInstallerListResponse>("/api/ccan/installers"),
   sessions: () => get<SessionListResponse>("/api/sessions"),
   session: (id: string) => get<Session>(`/api/sessions/${id}`),
   sessionEvents: (id: string, limit = 500) =>

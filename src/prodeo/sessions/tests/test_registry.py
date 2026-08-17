@@ -49,6 +49,9 @@ async def test_discovery_creates_session_and_emits_facts(bus: InProcessEventBus)
     assert events[0].payload["session"]["native_id"] == "abc"
     assert events[1].payload == {"from": "discovered", "to": "running", "reason": "discovered"}
     assert all(e.session_id == session.id for e in events)
+    # The session carries the registry's node identity (Phase 6 scoping).
+    assert session.node == "local"
+    assert events[0].payload["session"]["node"] == "local"
 
 
 @pytest.mark.asyncio

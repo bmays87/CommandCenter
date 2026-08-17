@@ -36,6 +36,11 @@ class Session(BaseModel):
     id: str
     adapter: str
     native_id: str
+    #: Node identity of the machine the session runs on (matches the
+    #: ``Event.node`` of its adapter's events). Set once at creation; the
+    #: descriptive-update fold never touches it. Pre-Phase-6 stored events
+    #: lack it and rebuild as "local", which is what they were.
+    node: str = "local"
     title: str = ""
     project: str = ""
     model: str | None = None

@@ -111,8 +111,9 @@ async def test_rebuild_critical_namespaces_are_never_deleted(
         _aged("session.discovered", days_old=100),
         _aged("schedule.created", days_old=101),
         _aged("interaction.requested", days_old=102),
+        _aged("machine.added", days_old=103),
     ]
-    doomed = _aged("tool.started", days_old=103)
+    doomed = _aged("tool.started", days_old=104)
     for e in [*protected, doomed]:
         await store.append(e)
 

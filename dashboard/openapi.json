@@ -110,6 +110,21 @@
         "title": "AdapterListResponse",
         "type": "object"
       },
+      "AddMachineRequest": {
+        "description": "FQDN or IP address of a machine already running CCAN.",
+        "properties": {
+          "address": {
+            "minLength": 1,
+            "title": "Address",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address"
+        ],
+        "title": "AddMachineRequest",
+        "type": "object"
+      },
       "Answer": {
         "description": "A human's resolution of an interaction.\n\nPermissions use ``decision`` (optionally with ``updated_input`` to run the\ntool with edited arguments); questions use ``text`` (a single label or\nfree text) or ``selections`` (structured: group id -> chosen labels).\nFor a denied permission, ``text`` carries the reason shown to the agent.",
         "properties": {
@@ -560,6 +575,56 @@
           "name"
         ],
         "title": "CatalogEntry",
+        "type": "object"
+      },
+      "CcanInstaller": {
+        "description": "One CCAN installer this hub can produce for download (ADR-0024).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "platform",
+          "url"
+        ],
+        "title": "CcanInstaller",
+        "type": "object"
+      },
+      "CcanInstallerListResponse": {
+        "properties": {
+          "installers": {
+            "items": {
+              "$ref": "#/components/schemas/CcanInstaller"
+            },
+            "title": "Installers",
+            "type": "array"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "installers"
+        ],
+        "title": "CcanInstallerListResponse",
         "type": "object"
       },
       "ClientPresence": {
@@ -1369,7 +1434,7 @@
       "HealthResponse": {
         "properties": {
           "boot_id": {
-            "default": "01M02YA5P5VGF6VWW4P4HJXYGS",
+            "default": "01M02ZGC59GBA1CME0609YNJW7",
             "title": "Boot Id",
             "type": "string"
           },
@@ -1646,6 +1711,63 @@
         "title": "LaunchSpec",
         "type": "object"
       },
+      "Machine": {
+        "description": "One agent machine known to the hub.\n\n``node`` is the machine's identity (its ``PRODEO_NODE_NAME``, stamped on\nevery event it originates); ``name`` is the display name shown on its\ndashboard tab and is the only renameable field. Renaming never touches\n``node`` \u2014 history stays attributed.",
+        "properties": {
+          "added_at": {
+            "format": "date-time",
+            "title": "Added At",
+            "type": "string"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "node",
+          "name"
+        ],
+        "title": "Machine",
+        "type": "object"
+      },
+      "MachineListResponse": {
+        "description": "Known agent machines, first added first \u2014 the dashboard's tab order.",
+        "properties": {
+          "machines": {
+            "items": {
+              "$ref": "#/components/schemas/Machine"
+            },
+            "title": "Machines",
+            "type": "array"
+          }
+        },
+        "required": [
+          "machines"
+        ],
+        "title": "MachineListResponse",
+        "type": "object"
+      },
       "ModelInfo": {
         "description": "One model an adapter can launch/switch to.\n\n``id`` is adapter-native (an alias or a full model id); free-form ids\nremain legal at every API that accepts a model. An empty catalog means\n\"the adapter takes free-form ids only\".",
         "properties": {
@@ -1782,6 +1904,21 @@
           "label"
         ],
         "title": "QuestionOption",
+        "type": "object"
+      },
+      "RenameMachineRequest": {
+        "description": "A machine tab's new display name; node identity never changes.",
+        "properties": {
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "RenameMachineRequest",
         "type": "object"
       },
       "RestartResponse": {
@@ -1933,6 +2070,11 @@
           },
           "native_id": {
             "title": "Native Id",
+            "type": "string"
+          },
+          "node": {
+            "default": "local",
+            "title": "Node",
             "type": "string"
           },
           "permission_mode": {
@@ -2328,6 +2470,25 @@
           }
         },
         "summary": "Stop App"
+      }
+    },
+    "/api/ccan/installers": {
+      "get": {
+        "description": "CCAN installers this hub can produce (empty until the CCAN package lands).",
+        "operationId": "list_ccan_installers_api_ccan_installers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CcanInstallerListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Ccan Installers"
       }
     },
     "/api/events": {
@@ -3052,6 +3213,145 @@
           }
         },
         "summary": "Answer Interaction"
+      }
+    },
+    "/api/machines": {
+      "get": {
+        "description": "Known agent machines, in tab order (first added first).",
+        "operationId": "list_machines_api_machines_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Machines"
+      },
+      "post": {
+        "description": "Pair with the CCAN at ``address`` and register its machine.\n\nThe pairing handshake ships with the CCAN package (the next Phase 6\nworkstream); until it lands this hub cannot reach out to a node, so\nthe answer is an honest 501 rather than a fake success. The request\nshape is final \u2014 the dashboard flow is unchanged when pairing arrives.",
+        "operationId": "add_machine_api_machines_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddMachineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Machine"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Machine"
+      }
+    },
+    "/api/machines/{machine_id}": {
+      "delete": {
+        "description": "Forget a machine (409 for the hub's own); its history stays queryable.",
+        "operationId": "remove_machine_api_machines__machine_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "machine_id",
+            "required": true,
+            "schema": {
+              "title": "Machine Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Machine"
+      }
+    },
+    "/api/machines/{machine_id}/name": {
+      "put": {
+        "description": "Rename a machine's tab; display name only, history keeps its node.",
+        "operationId": "rename_machine_api_machines__machine_id__name_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "machine_id",
+            "required": true,
+            "schema": {
+              "title": "Machine Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameMachineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Machine"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rename Machine"
       }
     },
     "/api/presence": {

@@ -110,6 +110,7 @@ class SessionRegistry:
             id=str(ULID()),
             adapter=adapter,
             native_id=desc.native_id,
+            node=self._node,
             title=desc.title,
             project=desc.project,
             model=desc.model,

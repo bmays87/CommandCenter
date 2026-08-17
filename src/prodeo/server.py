@@ -35,6 +35,7 @@ from prodeo.extensions import (
     workspace_root,
 )
 from prodeo.logging import configure_logging
+from prodeo.machines import MachineRegistry
 from prodeo.mediation import MediationService
 from prodeo.notify import Notifier
 from prodeo.notify.channels import channels_from_config
@@ -82,6 +83,7 @@ class Server:
             node=settings.node_name,
             tz=settings.scheduler_tz,
         )
+        self.machines = MachineRegistry(self.bus, node=settings.node_name)
         self.retention = RetentionService(
             self.bus,
             self.store,
@@ -186,6 +188,7 @@ class Server:
                 api_token=settings.api_token,
                 dashboard_dir=settings.dashboard_dir,
                 restart_fn=self.request_restart,
+                machines=self.machines,
             ),
             host=settings.api_host,
             port=settings.api_port,
@@ -221,6 +224,9 @@ class Server:
         # After the recorder so orphan cancellations reach the log (ADR-0007).
         await self.mediation.rebuild(self.store)
         await self.scheduler.rebuild(self.store)
+        await self.machines.rebuild(self.store)
+        # After the rebuild, so the hub's machine is added exactly once ever.
+        await self.machines.ensure_local()
         await self.bus.publish(
             new_event(
                 ev.SYSTEM_STARTED,

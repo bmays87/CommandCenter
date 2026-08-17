@@ -7,6 +7,7 @@ import { EventsView } from "./views/EventsView";
 import { ExtensionsView } from "./views/ExtensionsView";
 import { FleetView } from "./views/FleetView";
 import { InboxView } from "./views/InboxView";
+import { MachineTabs } from "./views/MachineTabs";
 import { SessionView } from "./views/SessionView";
 
 const queryClient = new QueryClient({
@@ -100,9 +101,11 @@ function Shell() {
   }
 
   const sessionMatch = /^#\/session\/(.+)$/.exec(route);
+  const machineMatch = /^#\/m\/(.+)$/.exec(route);
   const isInbox = route === "#/inbox";
   const isEvents = route === "#/events";
   const isExtensions = route === "#/extensions";
+  const isFleet = !sessionMatch && !isInbox && !isEvents && !isExtensions;
   const view = sessionMatch?.[1] ? (
     <SessionView id={sessionMatch[1]} />
   ) : isInbox ? (
@@ -112,7 +115,7 @@ function Shell() {
   ) : isExtensions ? (
     <ExtensionsView />
   ) : (
-    <FleetView />
+    <FleetView machineId={machineMatch?.[1] ?? null} />
   );
   return (
     <div className="shell">
@@ -120,12 +123,7 @@ function Shell() {
         <a href="#/" className="brand">
           ⌘ Prodeo
         </a>
-        <a
-          href="#/"
-          className={`nav-link ${
-            !sessionMatch && !isInbox && !isEvents && !isExtensions ? "nav-active" : ""
-          }`}
-        >
+        <a href="#/" className={`nav-link ${isFleet ? "nav-active" : ""}`}>
           Fleet
         </a>
         <InboxLink active={isInbox} />
@@ -137,6 +135,7 @@ function Shell() {
         </a>
         <span className="topbar-note">command center</span>
       </nav>
+      {isFleet ? <MachineTabs machineId={machineMatch?.[1] ?? null} /> : null}
       <main>{view}</main>
     </div>
   );

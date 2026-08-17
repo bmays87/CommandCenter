@@ -85,16 +85,39 @@ page whose center is the onboarding flow:
   holds a persistent outbound channel; either way the parent-only rule above
   is non-negotiable.
 
-## 5. Open questions (answer before implementation)
+## 5. Implementation sequencing (2026-08-15)
 
-- **Colocated upgrade path**: existing single-machine deployments have hub
-  and node in one process (ADR-0020). Does that local node auto-register as
-  the first tab (named from `PRODEO_NODE_NAME`), or does an upgraded user
-  land in the empty state until they install a CCAN? Auto-register is the
-  presumed answer — an upgrade should not hide running sessions.
+Four workstreams, in order; each leaves the system runnable and green.
+
+- **A — Machine registry + per-machine tabs (colocated).** *Landed
+  2026-08-15 (ADR-0024).* A `machine.*` event namespace and a hub-side
+  machine registry (event-sourced, rebuilt on boot, like schedules); the
+  colocated node auto-registers as the first machine (resolving the
+  upgrade-path question: yes). `/api/machines` (list/add/rename/remove),
+  `Session.node`, the tab strip, per-machine session scoping, the empty
+  state. Add Machine answers an honest 501 and the installer list is empty
+  with a note until B exists; both contracts are final.
+- **B — CCAN package + pairing + installer generation.** New workspace
+  package `packages/prodeo-ccan` (the node daemon); hub certificate
+  generated at first boot; installer built and served by the hub with the
+  cert + hub address baked in; Add Machine completes the pairing handshake.
+  ADR: pairing/trust (parent-only rule, §4).
+- **C — Node-targeted capabilities + event transport.** Session launch and
+  the machine-bound inventory (ADR-0020) route to the owning CCAN; CCAN
+  events flow into the hub log with their node identity. The broker
+  question (NATS vs Redis Streams vs plain HTTPS ingestion like
+  `/api/voice/events`) gets its ADR here, decided against real traffic.
+- **D — Deployment recipes.** Hub container; CCAN as a systemd unit /
+  Windows service; docs.
+
+## 6. Open questions (answer before implementation)
+
+- **Colocated upgrade path** — *resolved in A (ADR-0024)*: the hub's own
+  node auto-registers on boot (named from `PRODEO_NODE_NAME`), so an
+  upgraded deployment lands on a one-tab fleet, never the empty state.
 - **Certificate lifecycle**: what generates the hub certificate (first-boot
   self-signed vs. user-supplied), and what happens to already-paired CCANs
-  when it rotates.
-- **Removing a machine**: tabs need a remove/forget action symmetric with
-  Add Machine; what happens to that node's session history (presumably
-  retained and viewable, marked disconnected).
+  when it rotates. Decide in B's pairing ADR.
+- **Removing a machine** — *resolved in A (ADR-0024)*: DELETE forgets the
+  record only; the node's sessions and events stay in the log. The hub's
+  own machine cannot be removed (409).
