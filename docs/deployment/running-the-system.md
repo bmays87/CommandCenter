@@ -6,14 +6,16 @@ page is the mental model for how the pieces run.
 ## Two processes, not a dozen
 
 Everything in `packages/` is one of two things: a **process** or an
-**in-process plugin** that loads automatically once installed. There are only
-**two long-running processes** in a full setup (plus one optional external
-daemon):
+**in-process plugin** that loads automatically once installed. A
+single-machine setup has only **two long-running processes** (plus one
+optional external daemon); each *additional* agent machine adds one
+`prodeo-ccan`:
 
 | You start | What it is | What runs *inside* it |
 |---|---|---|
-| `prodeo-server` | The headless core; REST + WebSocket API on `:8600` | The **agent adapters** (`claude-code`, `aider`, `codex`), mediation, event store, the daily-digest **summarizer** |
+| `prodeo-server` | The headless core ("the hub"); REST + WebSocket API on `:8600` | The **agent adapters** (`claude-code`, `aider`, `codex`), mediation, event store, the daily-digest **summarizer**, and the **node sync** that mirrors paired machines |
 | `prodeo-mjolnir` | The voice client — a network *client* of the server, exactly like the dashboard | The **voice engines**: one **wakeword**, one **STT**, one **TTS**, plus the **LLM personality** summarizer |
+| `prodeo-ccan` | *(Phase 6, one per **additional** machine — never on the hub's own)* The Command Center Agent Node: mutual-TLS listener on `:8422` answering only its parent hub. Installed from an installer downloaded from the dashboard, not by hand (ADR-0025). | That machine's **agent adapters**, session registry, mediation, and event log — mirrored into the hub (ADR-0026) |
 | Ollama | Mjölnir's **default LLM brain** — an external daemon on `:11434`, **not** part of this repo. Degrades gracefully if absent (grammar still works). | — |
 
 Mjölnir knows nothing about adapters. It observes and controls sessions purely

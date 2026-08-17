@@ -9,17 +9,28 @@ Aider, or OpenHands — it manages them.
 
 ## Status
 
-**Phase 5 — Onboarding & Extensibility: complete.** Command Center is now
+**Phase 6 — Many Machines: core landed; deployment recipes remain.** The
+hub/CCAN split (ADR-0020) runs: the dashboard shows **one tab per machine**
+(renameable, first-connected first), and a machine joins by downloading a
+**CCAN installer** from the dashboard — a zip minted per download with this
+hub's certificate baked in, so the installed node answers **only** its
+parent Command Center (mutual TLS, single-use enrollment tokens,
+ADR-0025). Each paired machine runs its agents locally and keeps its own
+event log; the hub mirrors that log over pinned HTTPS and routes commands
+back — launch on any tab, terminate, prompt, switch models, answer
+permissions from one inbox (no broker; ADR-0026). Sessions on two machines
+are visible and controllable from one dashboard.
+
+**Phase 5 — Onboarding & Extensibility: complete.** Command Center is
 installed and extended from the dashboard, not a shell ritual. The
 **extensions manager** browses a sanctioned catalog and installs, enables,
 configures, and launches plugins and apps through schema-generated forms;
 guided setup installs the **Mjölnir** voice client
 ([prodeo-mjolnir](packages/prodeo-mjolnir/)) and its engines, downloads the
-models, and starts it — no hand-assembled `MJOLNIR_*` env vars. The server can
-**launch and drive** Claude Code sessions itself: start a session on a project,
-message it, switch model and permission mode live, answer its questions, and
-open the project in VS Code — all from the web UI. Mjölnir is free and
-open-source.
+models, and starts it — no hand-assembled `MJOLNIR_*` env vars. The server
+can **launch and drive** Claude Code sessions itself: start a session on a
+project, message it, switch model and permission mode live, and answer its
+questions — all from the web UI. Mjölnir is free and open-source.
 
 Everything from earlier phases stands: Claude Code, Aider, and Codex CLI
 sessions supervised side by side; permission requests answered from the
@@ -30,9 +41,10 @@ runbook in [docs/deployment/satellite-pi.md](docs/deployment/satellite-pi.md));
 the scheduler launches agent runs unattended on cron; a daily digest summarizes
 the fleet; retention archives old events.
 
-Next is **Phase 6 — Many Machines**: a containerizable hub with a per-machine
-Command Center Agent Node (CCAN). See the [roadmap](docs/roadmap.md) for what
-each phase delivers. Start with [docs/vision.md](docs/vision.md) and
+What remains in Phase 6 is **deployment recipes** (the hub as a container,
+the CCAN as a systemd unit / Windows service). See the
+[roadmap](docs/roadmap.md) for what each phase delivers. Start with
+[docs/vision.md](docs/vision.md) and
 [docs/architecture/overview.md](docs/architecture/overview.md).
 
 ## Quickstart

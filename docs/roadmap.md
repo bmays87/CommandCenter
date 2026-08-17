@@ -124,8 +124,9 @@ a **Command Center Agent Node (CCAN)** is installed on every machine that runs
 AI agents and owns everything machine-bound (adapters/transcript watching,
 agent launch, app supervision, filesystem browse, models storage, host
 probes). One hub, many CCANs, one dashboard.
-Work: the CCAN installable + its hub authentication; `EventBus` over NATS (or
-Redis Streams — ADR at the time); dashboard multi-node fleet view; deployment
+Work: the CCAN installable + its hub authentication; event transport
+(resolved: **no broker** — each CCAN keeps its own log and the hub mirrors
+it over pinned HTTPS, ADR-0026); dashboard multi-node fleet view; deployment
 recipes (hub container, CCAN via systemd / Windows).
 **UI & onboarding spec (2026-08-15):**
 `docs/plans/2026-08-15-phase6-machines-ui-and-ccan-onboarding.md` — a
@@ -142,10 +143,22 @@ seam's first tenant, editor opening, was removed 2026-08-15 — an IDE plays no
 role in an agent's work; see the note in ADR-0020. The seam pattern returns
 with the first real node-targeted action.)
 **Exit:** sessions on two machines visible and controllable from one dashboard.
-*Deferred* — swapped with Onboarding & Extensibility on 2026-08-09: there is no
-multi-machine use case on the horizon, while the single-machine setup ritual is a
-daily cost. Nothing is lost by waiting — the groundwork is already in place and
-was designed for it: node identity is on every event envelope
+*In progress* — three of four workstreams landed (sequencing in the UI &
+onboarding spec above): **A** machine registry + per-machine tabs
+(ADR-0024, 2026-08-15); **B** the CCAN package, hub identity certificate,
+per-download installers, and parent-only mutual-TLS pairing (ADR-0025,
+2026-08-16); **C** mirrored logs + node-routed commands with certificate
+pinning (ADR-0026, 2026-08-17). The exit criterion is met in code and
+pinned by `tests/integration/test_node_sync.py` (mirroring, remote launch/
+terminate, hub-inbox answers) and `test_ccan_pairing.py` (mutual TLS,
+pinning). Remaining: **D** deployment recipes — hub container, CCAN as a
+systemd unit / Windows service, and the runbook for pointing a remote
+machine's permission hook at the hub.
+*(Historical note: this phase was deferred on 2026-08-09 — swapped with
+Onboarding & Extensibility because the single-machine setup ritual was a
+daily cost while no multi-machine use case was imminent — and picked back up
+2026-08-15.)* Nothing was lost by waiting — the groundwork was already in
+place and designed for it: node identity is on every event envelope
 (`Event.node`, `PRODEO_NODE_NAME`), `EventBus` is a Protocol precisely so a
 broker-backed implementation can arrive without touching services (ADR-0002),
 and the permission hook already has the CCAN shape (machine-local process

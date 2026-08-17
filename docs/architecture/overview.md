@@ -2,9 +2,16 @@
 
 ## System Shape
 
-Command Center is a single headless daemon (`prodeo-server`) composed of loosely
-coupled internal services that communicate exclusively through an event bus, plus
-any number of external clients that consume its API.
+Command Center is a headless daemon (`prodeo-server`, "the hub") composed of
+loosely coupled internal services that communicate exclusively through an
+event bus, plus any number of external clients that consume its API. Since
+Phase 6 it is one hub, many machines: each additional agent machine runs a
+**Command Center Agent Node** (`prodeo-ccan`) — the same machine-bound stack
+the hub runs locally (adapters, session registry, mediation, its own event
+log) behind a mutual-TLS listener that answers only its parent hub
+(ADR-0020, ADR-0025). The hub mirrors each node's log over pinned HTTPS and
+routes commands to the owning node; dashboards see one fleet, one inbox
+(ADR-0026).
 
 ```
 ┌────────────────────────────  Clients  ────────────────────────────┐
@@ -63,16 +70,28 @@ kind (adapters, notification channels, STT/TTS engines, storage backends).
 
 ## Process Model
 
-- The server is a single asyncio process. CPU-heavy or crash-prone work (audio
+- The hub is a single asyncio process. CPU-heavy or crash-prone work (audio
   inference, subprocess-wrangling adapters) runs in subprocesses or executors.
+- Each additional agent machine runs a **CCAN** (`prodeo-ccan`): a separate
+  process installed from a hub-minted installer, holding that machine's
+  adapters and event log. The hub dials it (never the reverse) over mutual
+  TLS pinned to the certificates exchanged at pairing (ADR-0025/0026).
 - The voice client (Mjölnir) is a **separate process** (potentially a separate
   machine) that talks to the server over the same WebSocket/REST API as any
   other client. Audio never enters the core.
 
+## Multi-Machine (Phase 6)
+
+The `EventBus` stays in-process on every node (ADR-0002 holds); distribution
+happens at the edge. A CCAN's registry and mediation service are the only
+*writers* for that machine's `session.*`/`interaction.*` facts; the hub
+folds mirrored facts into read-models and republishes them into its own log
+(idempotent per event id), so one store serves history, dashboards, digests,
+and notifications for the whole fleet. A broker (NATS/Redis) remains
+possible behind the `EventBus` Protocol if fleet size ever demands it —
+rejected for now in ADR-0026.
+
 ## Deferred by Design (with seams in place)
 
-- **Multi-machine**: the event bus is behind an `EventBus` interface; a future
-  NATS/Redis-backed implementation plus a node identity field on every event enables
-  a hub-and-agents topology without reworking services. See ADR-0002.
 - **Multi-user**: every API route already passes through an auth dependency; v1 ships
   a single-token implementation.

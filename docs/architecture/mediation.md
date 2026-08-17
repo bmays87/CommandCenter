@@ -80,8 +80,18 @@ posture shows the terminal prompt instead.
 - **Pending interactions do not survive restarts** (ADR-0007). Deliver
   callbacks are process-local, so `rebuild()` folds the `interaction.*` log for
   history and cancels anything still pending with reason
-  `orphaned_by_restart`. Boot order matters: store → recorder → registry
-  rebuild → mediation rebuild, so the cancellations are recorded.
+  `orphaned_by_restart` — but only *its own node's* pendings: a paired
+  machine's mediation service is alive and still waiting, so its mirrored
+  interactions are not orphans here (ADR-0026). Boot order matters: store →
+  recorder → registry rebuild → mediation rebuild, so the cancellations are
+  recorded.
+- **Remote interactions route to their owner** (Phase 6, ADR-0026). An
+  interaction opened on a paired machine mirrors into the hub's inbox as a
+  read-model (`Interaction.node` names the owner); answering it forwards to
+  that machine's CCAN, whose mediation service — holding the live deliver
+  callback — resolves it, and the resolution mirrors back. Interactive
+  sessions' permission hooks keep POSTing to the hub API directly, which
+  works unchanged from any machine.
 - **Timeouts auto-deny permissions.** Per-interaction `timeout_s` (adapter
   supplied) falls back to `PRODEO_MEDIATION_DEFAULT_TIMEOUT_S`; unset means
   wait forever. On timeout a permission delivers `deny "timed out"` so the

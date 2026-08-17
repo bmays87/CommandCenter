@@ -25,6 +25,9 @@ command-center/
 │       ├── sessions/            # Session Registry + state machine
 │       ├── adapters/            # AdapterManager, AdapterContext, testing kit
 │       ├── mediation/           # interactions (permissions/questions)
+│       ├── machines/            # machine catalogue, pairing, installers,
+│       │                        #   node gateway + event mirror (Phase 6)
+│       ├── identity.py          # per-node self-signed certificate (ADR-0025)
 │       ├── persistence/         # EventStore/StateStore interfaces + SQLite impl
 │       ├── plugins/             # Plugin Host (manifests, entry-point loading)
 │       ├── notify/              # Notifier service + channel interface
@@ -35,6 +38,7 @@ command-center/
 │       ├── config.py            # Pydantic Settings
 │       └── server.py            # composition root (DI wiring lives here only)
 ├── packages/                    # first-party plugins + clients, separately installable
+│   ├── prodeo-ccan/             # Command Center Agent Node: the per-machine daemon
 │   ├── prodeo-adapter-claude-code/
 │   ├── prodeo-adapter-aider/
 │   ├── prodeo-adapter-codex/
